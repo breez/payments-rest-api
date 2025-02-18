@@ -43,8 +43,8 @@ class SdkListener(EventListener):
 
 class PaymentHandler:
     def __init__(self):
-        self.api_key = self._get_ssm_parameter('/breez/api_key')
-        self.seed_phrase = self._get_ssm_parameter('/breez/seed_phrase')
+        self.api_key = self._get_ssm_parameter('/breez-test/api_key')
+        self.seed_phrase = self._get_ssm_parameter('/breez-test/seed_phrase')
         
         if not self.api_key:
             raise Exception("Missing Breez API key in Parameter Store")
