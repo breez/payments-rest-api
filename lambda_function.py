@@ -43,17 +43,17 @@ class SdkListener(EventListener):
 
 class PaymentHandler:
     def __init__(self):
-        self.api_key = self._get_ssm_parameter('/breez-test/api_key')
+        self.breez_api_key = self._get_ssm_parameter('/breez-test/api_key')
         self.seed_phrase = self._get_ssm_parameter('/breez-test/seed_phrase')
         
-        if not self.api_key:
+        if not self.breez_api_key:
             raise Exception("Missing Breez API key in Parameter Store")
         if not self.seed_phrase:
             raise Exception("Missing seed phrase in Parameter Store")
         
         logger.info("Retrieved encrypted parameters successfully")
         
-        config = default_config(LiquidNetwork.MAINNET, self.api_key)
+        config = default_config(LiquidNetwork.MAINNET, self.breez_api_key)
         config.working_dir = '/tmp'
         connect_request = ConnectRequest(config=config, mnemonic=self.seed_phrase)
         self.instance = connect(connect_request)
@@ -196,10 +196,33 @@ class PaymentHandler:
         except Exception as e:
             return {'statusCode': 500, 'body': json.dumps({'error': str(e)})}
 
+def validate_api_key(event):
+    """Validate the API key from the request headers"""
+    try:
+        api_key = event.get('headers', {}).get('x-api-key')
+        if not api_key:
+            logger.warning("No API key provided in request headers")
+            return False
+        
+        # Get the stored API key from SSM
+        ssm = boto3.client('ssm')
+        stored_key = ssm.get_parameter(
+            Name='/breez-test/api_secret',
+            WithDecryption=True
+        )['Parameter']['Value']
+        
+        return api_key == stored_key
+    except Exception as e:
+        logger.error(f"Error validating API key: {str(e)}", exc_info=True)
+        return False
+
 @app.get("/list_payments")
 @tracer.capture_method
 def list_payments():
     try:
+        if not validate_api_key(app.current_event):
+            return {"statusCode": 401, "body": json.dumps({"error": "Unauthorized"})}
+            
         logger.info("Processing list_payments request")
         handler = PaymentHandler()
         return handler.list_payments(app.current_event.query_string_parameters or {})
@@ -211,6 +234,9 @@ def list_payments():
 @tracer.capture_method
 def receive_payment():
     try:
+        if not validate_api_key(app.current_event):
+            return {"statusCode": 401, "body": json.dumps({"error": "Unauthorized"})}
+            
         body = app.current_event.json_body
         logger.info(f"Processing receive_payment request with body: {body}")
         
@@ -227,6 +253,9 @@ def receive_payment():
 @tracer.capture_method
 def send_payment():
     try:
+        if not validate_api_key(app.current_event):
+            return {"statusCode": 401, "body": json.dumps({"error": "Unauthorized"})}
+            
         body = app.current_event.json_body
         logger.info(f"Processing send_payment request with body: {body}")
         
