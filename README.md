@@ -1,5 +1,5 @@
 # Nodeless payments
-Proof of concept implementation for deploying nodeless sdk as lambda function to AWS. This gives us a REST api with close to zero cost of hosting.
+This is a proof of concept implementation for deploying the Breez SDK (Nodeless implementation) as a lambda function to AWS. It provides a REST api with close to zero cost of hosting.
 
 
 Currently implemented endpoints:
