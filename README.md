@@ -27,45 +27,29 @@ Follow [AWS guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-star
 ### Create SSM parameters for Breez credentials
 From the command line, run the following commands: 
 ```
-aws ssm put-parameter \
-    --name "/breez-nodeless/api_key" \
-    --value "<REPLACE_WITH_BREEZ_API_KEY>" \
-    --type SecureString
+aws ssm put-parameter --name "/breez-nodeless/api_key" --value "<REPLACE_WITH_BREEZ_API_KEY>" --type SecureString
 ```
 
 ```
-aws ssm put-parameter \
-    --name "/breez-nodeless/seed_phrase" \
-    --value "<REPLACE_WITH_SEED_WORDS>" \
-    --type SecureString
+aws ssm put-parameter --name "/breez-nodeless/seed_phrase" --value "<REPLACE_WITH_SEED_WORDS>" --type SecureString
 ```
 
 ```
-aws ssm put-parameter \
-    --name "/breez-nodeless/api_secret" \
-    --value "<REPLACE_WITH_DESIRED_API_AUTHENTICATION_KEY>" \
-    --type SecureString
+aws ssm put-parameter --name "/breez-nodeless/api_secret" --value "<REPLACE_WITH_DESIRED_API_AUTHENTICATION_KEY>" --type SecureString
 ```
 ### Deploy Cloudformation stack
 ```
-aws cloudformation create-stack \
-    --stack-name breez-integration \
-    --template-body file://cloudformation.yaml \
-    --capabilities CAPABILITY_IAM
+aws cloudformation create-stack --stack-name breez-integration --template-body file://cloudformation.yaml --capabilities CAPABILITY_IAM
 ```
 
 ```
 # Monitor the stack creation. At the begining it will return "CREATE_IN_PROGRESS", you have to wait until it changes to "CREATE_COMPLETE"
-aws cloudformation describe-stacks \
-    --stack-name breez-integration \
-    --query 'Stacks[0].StackStatus'
+aws cloudformation describe-stacks --stack-name breez-integration --query 'Stacks[0].StackStatus'
 ```
 ### Retrieve the API endpoints after successful deployment
 
 ```
-aws cloudformation describe-stacks \
-    --stack-name breez-integration \
-    --query 'Stacks[0].Outputs'
+aws cloudformation describe-stacks --stack-name breez-integration --query 'Stacks[0].Outputs'
 ```
 Output should look like this:
 ```
