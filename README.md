@@ -62,3 +62,33 @@ aws cloudformation describe-stacks \
     --query 'Stacks[0].Outputs'
 
 ```
+Output will look like this:
+```
+root@2edec8635e65:/# aws cloudformation describe-stacks     --stack-name breez-integration     --query 'Stacks[0].Outputs'
+[
+    {
+        "OutputKey": "ApiGatewayBaseURL",
+        "OutputValue": "https://yxzjorems5.execute-api.us-east-1.amazonaws.com/prod",
+        "Description": "Base URL for API Gateway"
+    },
+    {
+        "OutputKey": "SendEndpoint",
+        "OutputValue": "https://yxzjorems5.execute-api.us-east-1.amazonaws.com/prod/send_payment",
+        "Description": "Send endpoint URL"
+    },
+    {
+        "OutputKey": "PaymentsEndpoint",
+        "OutputValue": "https://yxzjorems5.execute-api.us-east-1.amazonaws.com/prod/list_payments",
+        "Description": "Payments endpoint URL"
+    },
+    {
+        "OutputKey": "ReceiveEndpoint",
+        "OutputValue": "https://yxzjorems5.execute-api.us-east-1.amazonaws.com/prod/receive_payment",
+        "Description": "Receive endpoint URL"
+    }
+]
+
+```
+### Example usage
+You can use example-client.py to test the functionality. Take Base URL from the above output and put it in API_URL in example-client.py
+API_KEY is the secret you set at the begining. 
