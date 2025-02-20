@@ -15,9 +15,9 @@ Currently implemented endpoints:
 
 ## Requirements for deployment
 - [AWS cli](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
-- Access to AWS account
-- [Breez nodeless api key](https://breez.technology/request-api-key/#contact-us-form-sdk)
-- 12 word BIP 39 seed
+- [Access to AWS account](https://signin.aws.amazon.com/signup?request_type=register)
+- [Breez SDK - Nodeless implementation API key](https://breez.technology/request-api-key/#contact-us-form-sdk)
+- 12 words BIP 39 seed (TBA: use Misty Breez to generate it)
 
 ## Deployment 
 Deployment to AWS with [cloudformation](./cloudformation.yaml). 
@@ -49,45 +49,33 @@ Default output format [None]:
 ```
 
 ### Create SSM parameters for Breez credentials
+From the command line, run the following commands: 
 ```
-aws ssm put-parameter \
-    --name "/breez-nodeless/api_key" \
-    --value "<REPLACE_WITH_BREEZ_API_KEY>" \
-    --type SecureString
+aws ssm put-parameter --name "/breez-nodeless/api_key" --value "<REPLACE_WITH_BREEZ_API_KEY>" --type SecureString
+```
 
-aws ssm put-parameter \
-    --name "/breez-nodeless/seed_phrase" \
-    --value "<REPLACE_WITH_SEED_WORDS>" \
-    --type SecureString
+```
+aws ssm put-parameter --name "/breez-nodeless/seed_phrase" --value "<REPLACE_WITH_SEED_WORDS>" --type SecureString
+```
 
-aws ssm put-parameter \
-    --name "/breez-nodeless/api_secret" \
-    --value "<REPLACE_WITH_DESIRED_API_AUTHENTICATION_KEY>" \
-    --type SecureString
+```
+aws ssm put-parameter --name "/breez-nodeless/api_secret" --value "<REPLACE_WITH_DESIRED_API_AUTHENTICATION_KEY>" --type SecureString
 ```
 ### Deploy Cloudformation stack
 ```
-aws cloudformation create-stack \
-    --stack-name breez-integration \
-    --template-body file://cloudformation.yaml \
-    --capabilities CAPABILITY_IAM
+aws cloudformation create-stack --stack-name breez-integration --template-body file://cloudformation.yaml --capabilities CAPABILITY_IAM
+```
 
+```
 # Monitor the stack creation. At the begining it will return "CREATE_IN_PROGRESS", you have to wait until it changes to "CREATE_COMPLETE"
-aws cloudformation describe-stacks \
-    --stack-name breez-integration \
-    --query 'Stacks[0].StackStatus'
-
-
+aws cloudformation describe-stacks --stack-name breez-integration --query 'Stacks[0].StackStatus'
 ```
 ### Retrieve the API endpoints after successful deployment
 
 ```
-aws cloudformation describe-stacks \
-    --stack-name breez-integration \
-    --query 'Stacks[0].Outputs'
-
+aws cloudformation describe-stacks --stack-name breez-integration --query 'Stacks[0].Outputs'
 ```
-Output will look like this:
+Output should look like this:
 ```
 root@2edec8635e65:/# aws cloudformation describe-stacks     --stack-name breez-integration     --query 'Stacks[0].Outputs'
 [
