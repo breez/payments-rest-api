@@ -14,8 +14,8 @@ Currently implemented endpoints:
 
 ## Requirements for deployment
 - [AWS cli](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
-- Access to AWS account
-- [Breez nodeless api key](https://breez.technology/request-api-key/#contact-us-form-sdk)
+- [Access to AWS account](https://signin.aws.amazon.com/signup?request_type=register)
+- [Breez SDK - Nodeless implementation API key](https://breez.technology/request-api-key/#contact-us-form-sdk)
 - 12 word BIP 39 seed
 
 ## Deployment 
