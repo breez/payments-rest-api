@@ -27,17 +27,17 @@ Follow [AWS guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-star
 ### Create SSM parameters for Breez credentials
 ```
 aws ssm put-parameter \
-    --name "/breez/api_key" \
+    --name "/breez-nodeless/api_key" \
     --value "<REPLACE_WITH_BREEZ_API_KEY>" \
     --type SecureString
 
 aws ssm put-parameter \
-    --name "/breez/seed_phrase" \
+    --name "/breez-nodeless/seed_phrase" \
     --value "<REPLACE_WITH_SEED_WORDS>" \
     --type SecureString
 
 aws ssm put-parameter \
-    --name "/breez/api_secret" \
+    --name "/breez-nodeless/api_secret" \
     --value "<REPLACE_WITH_DESIRED_API_AUTHENTICATION_KEY>" \
     --type SecureString
 ```

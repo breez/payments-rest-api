@@ -43,8 +43,8 @@ class SdkListener(EventListener):
 
 class PaymentHandler:
     def __init__(self):
-        self.breez_api_key = self._get_ssm_parameter('/breez-test/api_key')
-        self.seed_phrase = self._get_ssm_parameter('/breez-test/seed_phrase')
+        self.breez_api_key = self._get_ssm_parameter('/breez-nodeless/api_key')
+        self.seed_phrase = self._get_ssm_parameter('/breez-nodeless/seed_phrase')
         
         if not self.breez_api_key:
             raise Exception("Missing Breez API key in Parameter Store")
@@ -207,7 +207,7 @@ def validate_api_key(event):
         # Get the stored API key from SSM
         ssm = boto3.client('ssm')
         stored_key = ssm.get_parameter(
-            Name='/breez-test/api_secret',
+            Name='/breez-nodeless/api_secret',
             WithDecryption=True
         )['Parameter']['Value']
         
