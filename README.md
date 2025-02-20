@@ -48,10 +48,11 @@ aws cloudformation create-stack \
     --template-body file://cloudformation.yaml \
     --capabilities CAPABILITY_IAM
 
-# Monitor the stack creation
+# Monitor the stack creation. At the begining it will return "CREATE_IN_PROGRESS", you have to wait until it changes to "CREATE_COMPLETE"
 aws cloudformation describe-stacks \
     --stack-name breez-integration \
     --query 'Stacks[0].StackStatus'
+
 
 ```
 ### Retrieve the API endpoints after successful deployment
