@@ -48,6 +48,13 @@ Default output format [None]:
 
 ```
 
+### Get cloudformation.yaml
+Either clone this repository with git
+```
+git clone https://github.com/breez/nodeless-payments.git
+```
+or download just [cloudformation.yaml](https://raw.githubusercontent.com/breez/nodeless-payments/refs/heads/main/cloudformation.yaml). 
+
 ### Create SSM parameters for Breez credentials
 From the command line, run the following commands: 
 ```
@@ -103,5 +110,25 @@ root@2edec8635e65:/# aws cloudformation describe-stacks     --stack-name breez-i
 
 ```
 ### Example usage
-You can use example-client.py to test the functionality. Take Base URL from the above output and put it in API_URL in example-client.py
-API_KEY is the secret you set at the begining. 
+#### Python
+You can use `example-client.py`file from this to test the functionality. Take Base URL from the output of last command (example above) and API_SECRET and edit the `example-client.py` with correct values 
+
+```
+API_URL = "YOUR-URL-HERE"
+API_KEY = "YOUR-SECRET-HERE"
+```
+For example-client to work you need to have python installed together with requests library
+```
+pip install requests
+```
+
+#### curl
+If you don't have python installed you can also just run a curl command (should work on macos/linux).
+
+example for list_payments endpoint:
+```
+curl -X POST "<YOUR-URL-HERE>/list_payments" \
+     -H "Content-Type: application/json" \
+     -H "x-api-key: YOUR_API_SECRET" \
+     -d '{}'
+```
