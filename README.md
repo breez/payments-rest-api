@@ -30,6 +30,7 @@ There are several ways of creating credentials to deploy in AWS. Ideally, you wa
 * Select *Security Credentials* from your account's menu:
 <img src="./docs/screenshot0.jpg" width="50%">
 <img src="./docs/screenshot1.jpg" width="30%">
+
 * Follow the steps to create an access key:
 <img src="./docs/screenshot2.jpg" width="50%">
 <img src="./docs/screenshot3.jpg" width="50%">
