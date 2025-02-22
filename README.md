@@ -37,13 +37,19 @@ There are several ways of creating credentials to deploy in AWS. Ideally, you wa
 <img src="./docs/screenshot4.jpg" width="50%">
 
 ### Configure CLI
-Now that you have aws cli installed and credentials ready its time for the last step of the requirements -> configuring the aws cli to work with your account. 
+Now that you have AWS CLI installed and credentials ready, it's time for the last step of the requirements: configuring the AWS CLI to work with your account credentials. 
 
-You will also have to chose a default region where you want to deploy your api. You can see the list of all regions [here](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-regions-availability-zones.html). You should pick the region that is closest to your business. For quick reference US (us-east-1,us-west-1), Europe (eu-central-1,eu-west-1), Latam (sa-east-1), Asia (ap-southeast-1). 
+You will also have to choose a default region where you want to deploy your API. You can see the list of all regions [here](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-regions-availability-zones.html). You should pick the region that is closest to your business. For quick reference: 
+* **US**: *us-east-1*, *us-west-1*
+* **Europe**: *eu-central-1*, *eu-west-1*
+* **LATAM**: *sa-east-1*
+* **Asia**: *ap-southeast-1* 
 
-Once you have api key, api secret and you've chosen the region you want to deploy to you're ready to configure the cli.
+Once you have an API key, an API secret and region string, you're ready to configure the CLI.
 
-Open terminal in your OS and type `aws configure` and press enter. Now copy/paste the api key, press enter, and copy/paste the secret and press enter do the same for region. You can leave the default output format blank.. 
+Open a command line interface in your OS and type `aws configure` and press enter. Now, copy/paste the API key, press enter, then copy/paste the API secret and press enter. Do the same for the region string. You can leave the default output format blank. 
+
+Here's an example:
 
 ```
 # aws configure
@@ -51,7 +57,6 @@ AWS Access Key ID [None]: AKIA44HIGHQYZHRTZ7WP
 AWS Secret Access Key [None]: qKVd5nMA7y8DbEuvF6kFbKTcYrAow8rH9KDxWGkT
 Default region name [None]: us-east-1
 Default output format [None]: 
-
 ```
 
 ### Get cloudformation.yaml
