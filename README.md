@@ -72,20 +72,17 @@ aws ssm put-parameter --name "/breez-nodeless/seed_phrase" --value "<REPLACE_WIT
 ```
 aws ssm put-parameter --name "/breez-nodeless/api_secret" --value "<REPLACE_WITH_DESIRED_API_AUTHENTICATION_KEY>" --type SecureString
 ```
-### Get cloudformation.yaml
-Download this configuration file: [cloudformation.yaml](https://raw.githubusercontent.com/breez/nodeless-payments/refs/heads/main/cloudformation.yaml). 
-
 ### Deploy Cloudformation stack
+* Download this configuration file: [cloudformation.yaml](https://raw.githubusercontent.com/breez/nodeless-payments/refs/heads/main/cloudformation.yaml). 
+* Deploy the stack:
 ```
 aws cloudformation create-stack --stack-name breez-integration --template-body file://cloudformation.yaml --capabilities CAPABILITY_IAM
 ```
-
-Monitor the stack creation. At the begining, it will return *CREATE_IN_PROGRESS*, wait until it changes to *CREATE_COMPLETE*:
+* Monitor the stack creation (wait until it changes to *CREATE_COMPLETE*):
 ```
 aws cloudformation describe-stacks --stack-name breez-integration --query Stacks[0].StackStatus
 ```
-### Retrieve the API endpoints after successful deployment
-
+* Retrieve the API endpoints:
 ```
 aws cloudformation describe-stacks --stack-name breez-integration --query 'Stacks[0].Outputs'
 ```
@@ -114,9 +111,8 @@ root@2edec8635e65:/# aws cloudformation describe-stacks     --stack-name breez-i
         "Description": "Receive endpoint URL"
     }
 ]
-
-If the deploy was successful you should deactivate your api key now.
 ```
+* If the deployment was successful, you should deactivate your API key now.
 ### Example usage
 #### Python
 You can use `example-client.py`file from this to test the functionality. Take Base URL from the output of last command (example above) and API_SECRET and edit the `example-client.py` with correct values 
