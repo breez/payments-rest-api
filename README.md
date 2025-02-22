@@ -60,11 +60,7 @@ Default output format [None]:
 ```
 
 ### Get cloudformation.yaml
-Either clone this repository with git
-```
-git clone https://github.com/breez/nodeless-payments.git
-```
-or download just [cloudformation.yaml](https://raw.githubusercontent.com/breez/nodeless-payments/refs/heads/main/cloudformation.yaml). 
+Download this configuration file: [cloudformation.yaml](https://raw.githubusercontent.com/breez/nodeless-payments/refs/heads/main/cloudformation.yaml). 
 
 ### Create SSM parameters for Breez credentials
 From the command line, run the following commands: 
