@@ -121,7 +121,7 @@ You can use `example-client.py`file from this to test the functionality. Take Ba
 API_URL = "YOUR-URL-HERE"
 API_KEY = "YOUR-SECRET-HERE"
 ```
-For example-client to work you need to have python installed together with requests library:
+For example-client to work, you need to have python installed together with requests library:
 ```
 pip install requests
 ```
