@@ -13,7 +13,7 @@ Currently implemented endpoints:
 - Encrypted secrets are stored in [AWS Parameter Store](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html) and are accessed each time any endpoint is called (in the background docker container is started for each REST API call).
 
 ## Requirements for deployment
-- [AWS cli](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
+- [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
 - [Access to AWS account](https://signin.aws.amazon.com/signup?request_type=register)
 - [Breez SDK - Nodeless implementation API key](https://breez.technology/request-api-key/#contact-us-form-sdk)
 - 12 words BIP 39 seed (TBA: use Misty Breez to generate it)
@@ -59,9 +59,6 @@ Default region name [None]: us-east-1
 Default output format [None]: 
 ```
 
-### Get cloudformation.yaml
-Download this configuration file: [cloudformation.yaml](https://raw.githubusercontent.com/breez/nodeless-payments/refs/heads/main/cloudformation.yaml). 
-
 ### Create SSM parameters for Breez credentials
 From the command line, run the following commands: 
 ```
@@ -75,6 +72,9 @@ aws ssm put-parameter --name "/breez-nodeless/seed_phrase" --value "<REPLACE_WIT
 ```
 aws ssm put-parameter --name "/breez-nodeless/api_secret" --value "<REPLACE_WITH_DESIRED_API_AUTHENTICATION_KEY>" --type SecureString
 ```
+### Get cloudformation.yaml
+Download this configuration file: [cloudformation.yaml](https://raw.githubusercontent.com/breez/nodeless-payments/refs/heads/main/cloudformation.yaml). 
+
 ### Deploy Cloudformation stack
 ```
 aws cloudformation create-stack --stack-name breez-integration --template-body file://cloudformation.yaml --capabilities CAPABILITY_IAM
