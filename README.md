@@ -10,8 +10,8 @@ Currently implemented endpoints:
 
 ### Security:
 #### API key security
-- X-API-KEY header serves as authorization method for accessing the api. Anyone that knows the api url and API_SECRET can access your funds so make sure to protect this secret and to generate something unique and long. You can use generators like [this](https://1password.com/password-generator) or [this](https://www.uuidgenerator.net/)
-- Encrypted secrets are stored in [AWS Parameter Store](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html) and are accessed each time any endpoint is called (in the background docker container is started for each rest api call).
+- X-API-KEY header serves as authorization method for accessing the API. Anyone that knows the API url and API_SECRET can access your funds, so make sure to protect this secret and to generate a unique and long string. You can use generators like [this](https://1password.com/password-generator) or [this](https://www.uuidgenerator.net/).
+- Encrypted secrets are stored in [AWS Parameter Store](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html) and are accessed each time any endpoint is called (in the background docker container is started for each REST API call).
 
 ## Requirements for deployment
 - [AWS cli](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
