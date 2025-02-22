@@ -115,7 +115,7 @@ root@2edec8635e65:/# aws cloudformation describe-stacks     --stack-name breez-i
 * If the deployment was successful, you should deactivate your API key now.
 ### Example usage
 #### Python
-You can use `example-client.py`file from this to test the functionality. Take Base URL from the output of last command (example above) and API_SECRET and edit the `example-client.py` with correct values 
+You can use `example-client.py`file from this to test the functionality. Take Base URL from the output of last command (see *ApiGatewayBaseURL* example above) and API_SECRET and edit the `example-client.py` with correct values 
 
 ```
 API_URL = "YOUR-URL-HERE"
