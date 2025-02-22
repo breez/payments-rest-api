@@ -130,12 +130,9 @@ Then run:
 python example-client.py
 ```
 #### curl
-If you don't have python installed you can also just run a curl command (should work on macos/linux).
+If you don't have python installed, you can also just run a curl command.
 
-example for list_payments endpoint:
+For example, for the *list_payments* endpoint, run:
 ```
-curl -X POST "<YOUR-URL-HERE>/list_payments" \
-     -H "Content-Type: application/json" \
-     -H "x-api-key: YOUR_API_SECRET" \
-     -d '{}'
+curl -X POST "<YOUR-URL-HERE>/list_payments" -H "Content-Type: application/json" -H "x-api-key: <API_SECRET>" -d '{}'
 ```
