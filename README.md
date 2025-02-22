@@ -8,8 +8,7 @@ Currently implemented endpoints:
 - /list_payments
 
 
-### Security:
-#### API key security
+### API Key Security
 - X-API-KEY header serves as authorization method for accessing the API. Anyone that knows the API url and API_SECRET can access your funds, so make sure to protect this secret and to generate a unique and long string. You can use generators like [this](https://1password.com/password-generator) or [this](https://www.uuidgenerator.net/).
 - Encrypted secrets are stored in [AWS Parameter Store](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html) and are accessed each time any endpoint is called (in the background docker container is started for each REST API call).
 
@@ -26,13 +25,15 @@ Deployment to AWS with [cloudformation](./cloudformation.yaml).
 Follow [AWS guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) to install it on your computer. 
 
 ### Create credentials
-There are several ways of creating credentials to deploy this in AWS. Ideally you want to generate temporary credentials that are gonna be revoked after this deployment. You can create create credentials that have the same permissions as your account (by default if this is your own account that is administrator permissions). This will enable you to run all the commands. 
+There are several ways of creating credentials to deploy in AWS. Ideally, you want to generate temporary credentials that are gonna be revoked after this deployment. You can create create credentials that have the same permissions as your root account. This will enable you to run all the CLI commands. Follow these steps to create an access key:
 
-![](./docs/screenshot0.jpg)
-![](./docs/screenshot1.jpg)
-![](./docs/screenshot2.jpg)
-![](./docs/screenshot3.jpg)
-![](./docs/screenshot4.jpg)
+* Select *Security Credentials* from your account's menu:
+<img src="./docs/screenshot0.jpg" width="50%">
+<img src="./docs/screenshot1.jpg" width="30%">
+* Follow the steps to create an access key:
+<img src="./docs/screenshot2.jpg" width="50%">
+<img src="./docs/screenshot3.jpg" width="50%">
+<img src="./docs/screenshot4.jpg" width="50%">
 
 ### Configure CLI
 Now that you have aws cli installed and credentials ready its time for the last step of the requirements -> configuring the aws cli to work with your account. 
