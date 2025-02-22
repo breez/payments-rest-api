@@ -80,9 +80,9 @@ Download this configuration file: [cloudformation.yaml](https://raw.githubuserco
 aws cloudformation create-stack --stack-name breez-integration --template-body file://cloudformation.yaml --capabilities CAPABILITY_IAM
 ```
 
+Monitor the stack creation. At the begining, it will return *CREATE_IN_PROGRESS*, wait until it changes to *CREATE_COMPLETE*:
 ```
-# Monitor the stack creation. At the begining it will return "CREATE_IN_PROGRESS", you have to wait until it changes to "CREATE_COMPLETE"
-aws cloudformation describe-stacks --stack-name breez-integration --query 'Stacks[0].StackStatus'
+aws cloudformation describe-stacks --stack-name breez-integration --query Stacks[0].StackStatus
 ```
 ### Retrieve the API endpoints after successful deployment
 
