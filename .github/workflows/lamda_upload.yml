@@ -30,15 +30,38 @@ jobs:
           zip -r ../lambda.zip .
           cd ..
 
+      - name: Verify ZIP contents
+        run: |
+          echo "Listing package directory:"
+          ls -lh package/
+          echo "Listing root directory:"
+          ls -lh
+          echo "Checking ZIP file size:"
+          ls -lh lambda.zip
+
+      - name: Check AWS Credentials and Region
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
+        run: |
+          aws sts get-caller-identity
+          aws s3 ls s3://breez-nodeless-payment || echo "Bucket access failed!"
 
       - name: Upload to S3
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: us-east-1
-          S3_BUCKET:    breez-nodeless-payment
+          S3_BUCKET: breez-nodeless-payment
           ZIP_FILE: lambda.zip
         run: |
-          aws s3 cp $ZIP_FILE s3://$S3_BUCKET/$ZIP_FILE
-
-
+          if [ -s "$ZIP_FILE" ]; then
+            echo "Uploading $ZIP_FILE to S3..."
+            aws s3 cp $ZIP_FILE s3://$S3_BUCKET/$ZIP_FILE
+          else
+            echo "ERROR: $ZIP_FILE is empty!"
+            echo "Current directory: $PWD"
+            echo $(ls -lh)
+            exit 1
+          fi
