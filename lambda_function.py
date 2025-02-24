@@ -199,19 +199,32 @@ class PaymentHandler:
 def validate_api_key(event):
     """Validate the API key from the request headers"""
     try:
+        logger.info("Headers received: %s", json.dumps(event.get('headers', {})))
         api_key = event.get('headers', {}).get('x-api-key')
         if not api_key:
             logger.warning("No API key provided in request headers")
             return False
         
+        logger.info("API key found in headers")
+        
         # Get the stored API key from SSM
         ssm = boto3.client('ssm')
-        stored_key = ssm.get_parameter(
-            Name='/breez-nodeless/api_secret',
-            WithDecryption=True
-        )['Parameter']['Value']
-        
-        return api_key == stored_key
+        try:
+            stored_key = ssm.get_parameter(
+                Name='/breez-nodeless/api_secret',
+                WithDecryption=True
+            )['Parameter']['Value']
+            logger.info("Successfully retrieved stored API key from SSM")
+            
+            # Compare keys (safely log length but not the actual keys)
+            keys_match = api_key == stored_key
+            logger.info("API key validation result: %s (lengths: request=%d, stored=%d)", 
+                       keys_match, len(api_key), len(stored_key))
+            return keys_match
+            
+        except ssm.exceptions.ParameterNotFound:
+            logger.error("SSM parameter /breez-nodeless/api_secret not found")
+            return False
     except Exception as e:
         logger.error(f"Error validating API key: {str(e)}", exc_info=True)
         return False
