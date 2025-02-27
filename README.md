@@ -84,7 +84,7 @@ aws cloudformation describe-stacks --stack-name breez-integration --query Stacks
 ```
 * Retrieve the API endpoints:
 ```
-aws cloudformation describe-stacks --stack-name breez-integration --query 'Stacks[0].Outputs'
+aws cloudformation describe-stacks --stack-name breez-integration --query Stacks[0].Outputs
 ```
 Output should look like this:
 ```
