@@ -84,7 +84,7 @@ aws cloudformation describe-stacks --stack-name breez-integration --query Stacks
 ```
 * Retrieve the API endpoints:
 ```
-aws cloudformation describe-stacks --stack-name breez-integration --query Stacks[0].Outputs
+aws cloudformation describe-stacks --stack-name breez-integration --query 'Stacks[0].Outputs'
 ```
 Output should look like this:
 ```
@@ -135,4 +135,22 @@ If you don't have python installed, you can also just run a curl command.
 For example, for the *list_payments* endpoint, run:
 ```
 curl -X POST "<YOUR-URL-HERE>/list_payments" -H "Content-Type: application/json" -H "x-api-key: <API_SECRET>" -d '{}'
+```
+
+### Cleanup
+To remove the stack you deployed you need to run the command delete-stack. This command starts the process to delete the stack, but it takes a while. 
+```
+aws cloudformation delete-stack --stack-name breez-integration
+```
+You can use the same status command to see if its been successfully deleted:
+```
+aws cloudformation describe-stacks --stack-name breez-integration --query Stacks[0].StackStatus
+```
+
+You should also cleanup the parameters:
+```
+aws ssm delete-parameter --name "/breez-nodeless/api_key"
+aws ssm delete-parameter --name "/breez-nodeless/seed_phrase"
+aws ssm delete-parameter --name "/breez-nodeless/api_secret"
+
 ```
