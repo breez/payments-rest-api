@@ -282,7 +282,60 @@ def send_payment():
         logger.error(f"Error sending payment: {str(e)}", exc_info=True)
         return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
 
+# Add this to your lambda_function.py file
+
+@app.get("/checkout")
+@tracer.capture_method
+def serve_checkout():
+    """Redirect to S3-hosted checkout page with payment parameters"""
+    try:
+        # Get query parameters (amount, order_id, etc.)
+        params = app.current_event.query_string_parameters or {}
+        
+        # API key validation is optional for checkout page (can be passed as param)
+        validate_request = params.get('require_auth', 'false').lower() == 'true'
+        if validate_request and not validate_api_key(app.current_event):
+            return {"statusCode": 401, "body": json.dumps({"error": "Unauthorized"})}
+            
+        logger.info(f"Processing checkout redirect with params: {params}")
+        
+        # Get S3 bucket URL from environment variable or parameter store
+        ssm = boto3.client('ssm')
+        checkout_base_url = "https://lightning-checkout.s3-website-us-east-1.amazonaws.com/checkout.html"
+        """
+        try:
+            checkout_base_url = ssm.get_parameter(
+                Name='/breez-nodeless/checkout_url'
+            )['Parameter']['Value']
+        except ssm.exceptions.ParameterNotFound:
+            # Default to environment variable or hardcoded URL if parameter not found
+            checkout_base_url = os.environ.get(
+                'CHECKOUT_BASE_URL', 
+                'https://your-s3-bucket-name.s3-website-region.amazonaws.com/checkout.html'
+            )
+        """
+        # Build the checkout URL with query parameters
+        query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+        redirect_url = f"{checkout_base_url}?{query_string}" if query_string else checkout_base_url
+        
+        # Return redirect response
+        return {
+            "statusCode": 302,
+            "headers": {
+                "Location": redirect_url,
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            },
+            "body": ""
+        }
+    except Exception as e:
+        logger.error(f"Error serving checkout: {str(e)}", exc_info=True)
+        return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
+
 @logger.inject_lambda_context
 @tracer.capture_lambda_handler
 def lambda_handler(event: dict, context: LambdaContext) -> dict:
     return app.resolve(event, context)
+
+

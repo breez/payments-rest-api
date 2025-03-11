@@ -38,6 +38,7 @@ Resources:
                   - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/breez-nodeless/api_key"
                   - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/breez-nodeless/seed_phrase"
                   - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/breez-nodeless/api_secret"
+                  - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/breez-nodeless/checkout_url"
 
   # API Gateway
   ApiGateway:
@@ -67,6 +68,14 @@ Resources:
       RestApiId: !Ref ApiGateway
       ParentId: !GetAtt ApiGateway.RootResourceId
       PathPart: "send_payment"
+      
+  # New Checkout Resource
+  ApiCheckoutResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: "checkout"
 
   # Lambda Function
   BreezLambdaFunction:
@@ -83,6 +92,7 @@ Resources:
       Environment:
         Variables:
           PARAMETER_PREFIX: "/breez/"
+          CHECKOUT_BASE_URL: "http://lightning-checkout.s3-website-us-east-1.amazonaws.com/checkout.html"
 
   # Allow API Gateway to invoke Lambda
   LambdaInvokePermission:
@@ -140,6 +150,61 @@ Resources:
         Uri: !Sub
           - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations"
           - LambdaArn: !GetAtt BreezLambdaFunction.Arn
+          
+  # New Checkout Method
+  GetCheckoutMethod:
+    Type: AWS::ApiGateway::Method
+    DependsOn: BreezLambdaFunction
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiCheckoutResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations"
+          - LambdaArn: !GetAtt BreezLambdaFunction.Arn
+      # Add CORS support for the checkout endpoint
+      MethodResponses:
+        - StatusCode: '200'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+        - StatusCode: '302'
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+            method.response.header.Location: true
+
+  # Add CORS for the checkout endpoint
+  CheckoutCorsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ApiCheckoutResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+          ResponseModels:
+            application/json: 'Empty'
 
   # API Deployment
   ApiDeployment:
@@ -148,6 +213,8 @@ Resources:
       - GetPaymentsMethod
       - PostReceiveMethod
       - PostSendMethod
+      - GetCheckoutMethod
+      - CheckoutCorsMethod
       - LambdaInvokePermission
     Properties:
       RestApiId: !Ref ApiGateway
@@ -166,3 +233,6 @@ Outputs:
   SendEndpoint:
     Description: "Send endpoint URL"
     Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/send_payment"
+  CheckoutEndpoint:
+    Description: "Checkout endpoint URL"
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/checkout"
