@@ -1,6 +1,7 @@
 import json
 import boto3
-from typing import Optional
+from typing import Optional, Set, Dict
+import os
 from breez_sdk_liquid import (
     LiquidNetwork,
     PayAmount,
@@ -21,10 +22,21 @@ import logging
 from aws_lambda_powertools import Logger, Tracer
 from aws_lambda_powertools.event_handler import APIGatewayRestResolver
 from aws_lambda_powertools.utilities.typing import LambdaContext
+from botocore.config import Config
+from concurrent.futures import ThreadPoolExecutor
+import io
 
 logger = Logger()
 tracer = Tracer()
 app = APIGatewayRestResolver()
+
+# Configure boto3 for better performance
+BOTO_CONFIG = Config(
+    max_pool_connections=50,
+    retries={'max_attempts': 3},
+    connect_timeout=5,
+    read_timeout=5
+)
 
 class SdkListener(EventListener):
     def __init__(self):
@@ -45,6 +57,12 @@ class PaymentHandler:
     def __init__(self):
         self.breez_api_key = self._get_ssm_parameter('/breez-nodeless/api_key')
         self.seed_phrase = self._get_ssm_parameter('/breez-nodeless/seed_phrase')
+        self.s3_bucket = os.environ.get('S3_BUCKET_NAME')
+        if not self.s3_bucket:
+            raise Exception("S3_BUCKET_NAME environment variable is not set")
+        self.sdk_dir = '/tmp/breez_sdk'
+        self.s3_client = boto3.client('s3', config=BOTO_CONFIG)
+        self.s3_prefix = 'breez_sdk/'
         
         if not self.breez_api_key:
             raise Exception("Missing Breez API key in Parameter Store")
@@ -53,13 +71,119 @@ class PaymentHandler:
         
         logger.info("Retrieved encrypted parameters successfully")
         
+        # Ensure SDK directory exists
+        os.makedirs(self.sdk_dir, exist_ok=True)
+        
+        # Always sync from S3 at initialization
+        self._sync_from_s3()
+        
         config = default_config(LiquidNetwork.MAINNET, self.breez_api_key)
-        config.working_dir = '/tmp'
+        config.working_dir = self.sdk_dir
         connect_request = ConnectRequest(config=config, mnemonic=self.seed_phrase)
         self.instance = connect(connect_request)
         self.listener = SdkListener()
         self.instance.add_event_listener(self.listener)
-        
+    
+    def _download_file(self, s3_key: str) -> None:
+        """Download a single file from S3"""
+        try:
+            relative_path = s3_key[len(self.s3_prefix):]
+            if not relative_path:  # Skip the directory itself
+                return
+                
+            local_path = os.path.join(self.sdk_dir, relative_path)
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            
+            # Use fileobj for better performance
+            with open(local_path, 'wb') as f:
+                self.s3_client.download_fileobj(self.s3_bucket, s3_key, f)
+        except Exception as e:
+            logger.error(f"Failed to download {s3_key}: {str(e)}")
+    
+    def _upload_file(self, local_path: str) -> None:
+        """Upload a single file to S3"""
+        try:
+            relative_path = os.path.relpath(local_path, self.sdk_dir)
+            s3_key = f"{self.s3_prefix}{relative_path}"
+            
+            # Use fileobj for better performance
+            with open(local_path, 'rb') as f:
+                self.s3_client.upload_fileobj(f, self.s3_bucket, s3_key)
+        except Exception as e:
+            logger.error(f"Failed to upload {local_path}: {str(e)}")
+    
+    def _sync_from_s3(self):
+        """Sync Breez SDK state from S3 to local directory"""
+        try:
+            logger.info(f"Syncing Breez SDK state from S3 bucket {self.s3_bucket}")
+            
+            # List all objects in a single call
+            response = self.s3_client.list_objects_v2(
+                Bucket=self.s3_bucket,
+                Prefix=self.s3_prefix
+            )
+            
+            if 'Contents' not in response:
+                return
+                
+            # Use ThreadPoolExecutor for parallel downloads
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = []
+                for obj in response['Contents']:
+                    futures.append(executor.submit(self._download_file, obj['Key']))
+                
+                # Wait for all downloads to complete
+                for future in futures:
+                    future.result()
+            
+            logger.info("Successfully synced from S3")
+        except Exception as e:
+            logger.error(f"Failed to sync from S3: {str(e)}")
+    
+    def _sync_to_s3(self):
+        """Sync Breez SDK state from local directory to S3"""
+        try:
+            logger.info(f"Syncing Breez SDK state to S3 bucket {self.s3_bucket}")
+            
+            # Get list of S3 objects
+            s3_objects: Set[str] = set()
+            response = self.s3_client.list_objects_v2(
+                Bucket=self.s3_bucket,
+                Prefix=self.s3_prefix
+            )
+            
+            if 'Contents' in response:
+                s3_objects = {obj['Key'] for obj in response['Contents']}
+            
+            # Use ThreadPoolExecutor for parallel uploads
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = []
+                for root, _, files in os.walk(self.sdk_dir):
+                    for file in files:
+                        local_path = os.path.join(root, file)
+                        relative_path = os.path.relpath(local_path, self.sdk_dir)
+                        s3_key = f"{self.s3_prefix}{relative_path}"
+                        
+                        futures.append(executor.submit(self._upload_file, local_path))
+                        s3_objects.discard(s3_key)
+                
+                # Wait for all uploads to complete
+                for future in futures:
+                    future.result()
+            
+            # Batch delete remaining objects
+            if s3_objects:
+                delete_objects = [{'Key': key} for key in s3_objects]
+                for i in range(0, len(delete_objects), 1000):  # S3 batch delete limit is 1000
+                    self.s3_client.delete_objects(
+                        Bucket=self.s3_bucket,
+                        Delete={'Objects': delete_objects[i:i+1000]}
+                    )
+            
+            logger.info("Successfully synced to S3")
+        except Exception as e:
+            logger.error(f"Failed to sync to S3: {str(e)}")
+    
     def _get_ssm_parameter(self, param_name: str) -> str:
         """Get an encrypted parameter from AWS Systems Manager Parameter Store"""
         logger.info(f"Retrieving encrypted parameter: {param_name}")
@@ -285,4 +409,12 @@ def send_payment():
 @logger.inject_lambda_context
 @tracer.capture_lambda_handler
 def lambda_handler(event: dict, context: LambdaContext) -> dict:
-    return app.resolve(event, context)
+    try:
+        response = app.resolve(event, context)
+        # Always sync to S3 before returning response
+        handler = PaymentHandler()
+        handler._sync_to_s3()
+        return response
+    except Exception as e:
+        logger.error(f"Error in lambda_handler: {str(e)}", exc_info=True)
+        return {"statusCode": 500, "body": json.dumps({"error": str(e)})}

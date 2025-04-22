@@ -2,6 +2,26 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: "Deploys an API Gateway, Lambda function, and IAM roles for Breez integration."
 
 Resources:
+  # S3 Bucket for Breez SDK state
+  BreezStateBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-nodeless-sync-state"
+      LifecycleConfiguration:
+        Rules:
+          - Id: CleanupOldVersions
+            Status: Enabled
+            ExpirationInDays: 30
+
+  # SSM Parameter for Bucket Name
+  BucketNameParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/breez-nodeless/bucket_name"
+      Type: String
+      Value: !Ref BreezStateBucket
+      Description: "Name of the S3 bucket used for Breez SDK state"
+
   # IAM Role for Lambda Function
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -29,8 +49,12 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                  - s3:DeleteObject
                 Resource: 
-                  - "arn:aws:s3:::lambda-nodeless-payment/*"
+                  - !Sub "arn:aws:s3:::${AWS::StackName}-nodeless-sync-state"
+                  - !Sub "arn:aws:s3:::${AWS::StackName}-nodeless-sync-state/*"
               - Effect: Allow
                 Action:
                   - ssm:GetParameter
@@ -72,7 +96,7 @@ Resources:
   BreezLambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
-      FunctionName: BreezLambda
+      FunctionName: !Sub "${AWS::StackName}-BreezLambda"
       Runtime: python3.12
       Handler: lambda_function.lambda_handler
       Role: !GetAtt LambdaExecutionRole.Arn
@@ -83,6 +107,7 @@ Resources:
       Environment:
         Variables:
           PARAMETER_PREFIX: "/breez/"
+          S3_BUCKET_NAME: !Ref BreezStateBucket
 
   # Allow API Gateway to invoke Lambda
   LambdaInvokePermission:
