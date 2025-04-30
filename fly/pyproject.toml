@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "breez-fastapi"
+version = "0.1.0"
+description = "A FastAPI implementation of Breez SDK for Lightning/Liquid payments"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.10"
+fastapi = "^0.111.0"
+uvicorn = {extras = ["standard"], version = "^0.30.1"}
+breez-sdk-liquid = "*"
+python-dotenv = "^1.0.1"
+requests = "^2.31.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
