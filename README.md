@@ -8,4 +8,4 @@ Currently implemented endpoints:
 
 ## Options
 - [fly.io](./fly/README.md) - deploy fly.io app 
-- [aws lambda](./lambda/README.md) - lambda functions (wip)
+- [self hosted](./fly/DEV.md) - deploy anywhere you want

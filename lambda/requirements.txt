@@ -1,6 +1,0 @@
-aws-lambda-powertools
-breez-sdk-liquid==0.6.3
-boto3
-python-dotenv
-requests
-aws-xray-sdk
