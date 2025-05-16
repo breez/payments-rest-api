@@ -274,7 +274,6 @@ class PaymentHandler:
         """
         logger.debug("Entering get_info")
         try:
-            self.wait_for_sync()
             info = self.instance.get_info()
             # Convert info object to dictionary for easier handling
             info_dict = {
@@ -305,7 +304,6 @@ class PaymentHandler:
         """
         logger.debug(f"Entering list_payments with params: {params}")
         try:
-            #self.wait_for_sync()
             from_ts = int(params.get('from_timestamp')) if params and params.get('from_timestamp') is not None else None
             to_ts = int(params.get('to_timestamp')) if params and params.get('to_timestamp') is not None else None
             offset = int(params.get('offset')) if params and params.get('offset') is not None else None
@@ -380,7 +378,6 @@ class PaymentHandler:
         """
         logger.debug(f"Entering get_payment with identifier: {identifier}, type: {identifier_type}")
         try:
-            self.wait_for_sync()
             req = None
             if identifier_type == 'payment_hash':
                 req = GetPaymentRequest.PAYMENT_HASH(identifier)
@@ -439,7 +436,6 @@ class PaymentHandler:
         """
         logger.debug(f"Entering send_payment to {destination} (amount_sat={amount_sat}, amount_asset={amount_asset}, asset_id={asset_id}, drain={drain})")
         try:
-            self.wait_for_sync()
             amount_obj = None
 
             if drain:
@@ -560,7 +556,6 @@ class PaymentHandler:
         """
         logger.debug("Entering fetch_buy_bitcoin_limits")
         try:
-            self.wait_for_sync()
             limits = self.instance.fetch_onchain_limits() # Onchain limits apply to Buy/Sell
             limits_dict = {
                 'receive': limits.receive.__dict__ if limits.receive else None,
@@ -589,7 +584,6 @@ class PaymentHandler:
         """
         logger.debug(f"Entering prepare_buy_bitcoin (provider={provider}, amount={amount_sat})")
         try:
-            self.wait_for_sync()
             buy_provider = getattr(BuyBitcoinProvider, provider.upper(), None)
             if not buy_provider:
                  logger.warning(f"Invalid buy bitcoin provider: {provider}")
@@ -623,7 +617,6 @@ class PaymentHandler:
         """
         logger.debug("Entering buy_bitcoin")
         try:
-            self.wait_for_sync()
             # Check if it's the correct type of SDK object
             if not isinstance(prepare_response, PrepareBuyBitcoinResponse):
                  logger.error(f"buy_bitcoin expects PrepareBuyBitcoinResponse object, but received {type(prepare_response)}.")
@@ -649,7 +642,6 @@ class PaymentHandler:
         """
         logger.debug("Entering list_fiat_currencies")
         try:
-            self.wait_for_sync() # Fiat data might need sync
             currencies = self.instance.list_fiat_currencies()
             currencies_list = [c.__dict__ for c in currencies]
             logger.debug(f"Listed {len(currencies_list)} fiat currencies.")
@@ -669,7 +661,6 @@ class PaymentHandler:
         """
         logger.debug("Entering fetch_fiat_rates")
         try:
-            self.wait_for_sync() # Fiat data might need sync
             rates = self.instance.fetch_fiat_rates()
             rates_list = [r.__dict__ for r in rates]
             logger.debug(f"Fetched {len(rates_list)} fiat rates.")
@@ -694,7 +685,6 @@ class PaymentHandler:
         """
         logger.debug(f"Entering parse_input with input: {input_str}")
         try:
-            self.wait_for_sync() # Parsing might require network interaction
             parsed_input = self.instance.parse(input_str)
             # Convert the specific InputType object to a dictionary
             # Access .data on the *instance* of the parsed input, not the type
@@ -749,7 +739,6 @@ class PaymentHandler:
         """
         logger.debug(f"Entering prepare_lnurl_pay (amount={amount_sat}, comment={comment})")
         try:
-            self.wait_for_sync()
             # Check if it's the correct type of SDK object
             if not isinstance(data, LnUrlPayRequestData):
                  logger.error(f"prepare_lnurl_pay expects LnUrlPayRequestData object, but received {type(data)}.")
@@ -793,7 +782,6 @@ class PaymentHandler:
         """
         logger.debug("Entering lnurl_pay")
         try:
-            self.wait_for_sync()
             # Check if it's the correct type of SDK object
             if not isinstance(prepare_response, PrepareLnUrlPayResponse):
                  logger.error(f"lnurl_pay expects PrepareLnUrlPayResponse object, but received {type(prepare_response)}.")
@@ -826,7 +814,6 @@ class PaymentHandler:
         """
         logger.debug("Entering lnurl_auth")
         try:
-            self.wait_for_sync()
              # Check if it's the correct type of SDK object
             if not isinstance(data, LnUrlAuthRequestData):
                  logger.error(f"lnurl_auth expects LnUrlAuthRequestData object, but received {type(data)}.")
@@ -865,7 +852,6 @@ class PaymentHandler:
         """
         logger.debug(f"Entering lnurl_withdraw (amount_msat={amount_msat}, comment={comment})")
         try:
-            self.wait_for_sync()
             # Check if it's the correct type of SDK object
             if not isinstance(data, LnUrlWithdrawRequestData):
                  logger.error(f"lnurl_withdraw expects LnUrlWithdrawRequestData object, but received {type(data)}.")
@@ -953,7 +939,6 @@ class PaymentHandler:
         """
         logger.debug(f"Entering pay_onchain to {address}")
         try:
-            self.wait_for_sync()
              # Check if it's the correct type of SDK object
             if not isinstance(prepare_response, PreparePayOnchainResponse):
                  logger.error(f"pay_onchain expects PreparePayOnchainResponse object, but received {type(prepare_response)}.")
@@ -990,7 +975,6 @@ class PaymentHandler:
          """
          logger.debug("Entering list_refundable_payments")
          try:
-             self.wait_for_sync()  # Ensure sync before executing
              refundable_payments = self.instance.list_refundables()
              logger.debug(f"Found {len(refundable_payments)} refundable payments.")
              logger.debug("Exiting list_refundable_payments")
@@ -1018,7 +1002,6 @@ class PaymentHandler:
         # Using getattr with a default for logging in case refundable_swap is None or malformed (though type hint should prevent this)
         logger.debug(f"Entering execute_refund for swap {getattr(refundable_swap, 'swap_address', 'N/A')} to {refund_address} with fee rate {fee_rate_sat_per_vbyte}")
         try:
-            self.wait_for_sync()
             # Check if it's the correct type of SDK object
             if not isinstance(refundable_swap, RefundableSwap):
                  logger.error(f"execute_refund expects RefundableSwap object, but received {type(refundable_swap)}.")
@@ -1062,7 +1045,6 @@ class PaymentHandler:
          """
          logger.debug("Entering rescan_swaps")
          try:
-             self.wait_for_sync() # Ensure sync before executing
              self.instance.rescan_onchain_swaps()
              logger.info("Onchain swaps rescan initiated.")
              logger.debug("Exiting rescan_swaps")
@@ -1083,7 +1065,6 @@ class PaymentHandler:
         """
         logger.debug("Entering recommended_fees")
         try:
-            self.wait_for_sync() # Fee estimates might need network
             fees = self.instance.recommended_fees()
             # Assuming recommended_fees returns an object with __dict__ or similar fee structure
             fees_dict = fees.__dict__ if fees else {} # Convert to dict
@@ -1105,7 +1086,6 @@ class PaymentHandler:
         """
         logger.debug("Entering handle_payments_waiting_fee_acceptance")
         try:
-            self.wait_for_sync()
             logger.info("Checking for payments waiting for fee acceptance...")
             # Filter for WAITING_FEE_ACCEPTANCE state
             payments_waiting = self.instance.list_payments(
@@ -1207,7 +1187,6 @@ class PaymentHandler:
         """
         logger.debug(f"Entering register_webhook with URL: {webhook_url}")
         try:
-            self.wait_for_sync() # Might require network
             # Basic URL format validation (can be made more robust)
             if not isinstance(webhook_url, str) or not webhook_url.startswith('https://'):
                  logger.warning(f"Invalid webhook_url provided: {webhook_url}")
@@ -1230,7 +1209,6 @@ class PaymentHandler:
         """
         logger.debug("Entering unregister_webhook")
         try:
-            self.wait_for_sync() # Might require network
             self.instance.unregister_webhook()
             logger.info("Webhook unregistered.")
             logger.debug("Exiting unregister_webhook")
@@ -1257,7 +1235,6 @@ class PaymentHandler:
         # Log truncated message to avoid logging potentially sensitive full messages
         logger.debug(f"Entering sign_message with message (truncated): {message[:50]}...")
         try:
-            self.wait_for_sync()
             if not isinstance(message, str) or not message:
                  logger.warning("Invalid or empty message provided for signing.")
                  raise ValueError("Message to sign must be a non-empty string.")
@@ -1304,7 +1281,6 @@ class PaymentHandler:
         """
         logger.debug(f"Entering check_message for message (truncated): {message[:50]}...")
         try:
-            self.wait_for_sync() # Might require network to verify
             if not isinstance(message, str) or not message:
                  logger.warning("Invalid or empty message provided for checking.")
                  raise ValueError("Message to check must be a non-empty string.")
@@ -1343,7 +1319,6 @@ class PaymentHandler:
         """
         logger.debug("Entering fetch_lightning_limits")
         try:
-            self.wait_for_sync()
             limits = self.instance.fetch_lightning_limits()
             limits_dict = {
                 'receive': limits.receive.__dict__ if limits.receive else None,
@@ -1368,7 +1343,6 @@ class PaymentHandler:
         """
         logger.debug("Entering fetch_onchain_limits")
         try:
-            self.wait_for_sync()
             limits = self.instance.fetch_onchain_limits()
             limits_dict = {
                 'receive': limits.receive.__dict__ if limits.receive else None,
@@ -1483,5 +1457,47 @@ class PaymentHandler:
 
         except Exception as e:
             logger.error(f"Error checking payment status for {destination[:30]}...: {str(e)}")
+            logger.exception("Full error details:")
+            raise
+
+    def get_exchange_rate(self, currency: str = None) -> Dict[str, Any]:
+        """
+        Fetches current exchange rates, optionally filtered by currency.
+
+        Args:
+            currency: Optional currency code (e.g., 'EUR', 'USD'). If provided, returns only that rate.
+        Returns:
+            Dictionary containing exchange rates. Format:
+            If currency specified: {'currency': 'EUR', 'rate': 123.45}
+            If no currency: {'EUR': 123.45, 'USD': 234.56, ...}
+        Raises:
+            ValueError: If specified currency is not found
+            Exception: For any SDK errors
+        """
+        logger.debug(f"Entering get_exchange_rate for currency: {currency}")
+        try:
+            rates = self.instance.fetch_fiat_rates()
+            rates_dict = {}
+            
+            # Convert rates to dictionary
+            for rate in rates:
+                rates_dict[rate.coin] = rate.value
+
+            if currency:
+                currency = currency.upper()
+                if currency not in rates_dict:
+                    logger.warning(f"Requested currency {currency} not found in available rates")
+                    raise ValueError(f"Exchange rate not available for currency: {currency}")
+                logger.info(f"Found exchange rate for {currency}: {rates_dict[currency]}")
+                return {
+                    'currency': currency,
+                    'rate': rates_dict[currency]
+                }
+            
+            logger.info(f"Returning all exchange rates for {len(rates_dict)} currencies")
+            return rates_dict
+
+        except Exception as e:
+            logger.error(f"Error fetching exchange rate: {str(e)}")
             logger.exception("Full error details:")
             raise

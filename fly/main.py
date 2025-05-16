@@ -114,6 +114,12 @@ class LnurlWithdrawBody(BaseModel):
     amount_msat: int
     comment: Optional[str] = None
 
+# Exchange Rate Models
+class ExchangeRateResponse(BaseModel):
+    currency: Optional[str] = None
+    rate: Optional[float] = None
+    rates: Optional[Dict[str, float]] = None
+
 # --- Dependencies ---
 async def get_api_key(api_key: str = Header(None, alias=API_KEY_NAME)):
     if not API_KEY:
@@ -332,6 +338,61 @@ async def withdraw(
             comment=request.comment
         )
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/exchange_rates/{currency}", response_model=ExchangeRateResponse)
+async def get_exchange_rate(
+    currency: Optional[str] = None,
+    api_key: str = Depends(get_api_key),
+    handler: PaymentHandler = Depends(get_payment_handler)
+):
+    """
+    Get current exchange rates, optionally filtered by currency.
+    
+    Args:
+        currency: Optional currency code (e.g., 'EUR', 'USD'). If not provided, returns all rates.
+    Returns:
+        Exchange rate information for the specified currency or all available currencies.
+    """
+    logger.info(f"Received exchange rate request for currency: {currency}")
+    try:
+        result = handler.get_exchange_rate(currency)
+        
+        # Format response based on whether a specific currency was requested
+        if currency:
+            return ExchangeRateResponse(
+                currency=result['currency'],
+                rate=result['rate']
+            )
+        else:
+            return ExchangeRateResponse(rates=result)
+            
+    except ValueError as e:
+        logger.error(f"Currency not found: {str(e)}")
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error fetching exchange rate: {str(e)}")
+        logger.exception("Full error details:")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/exchange_rates", response_model=ExchangeRateResponse)
+async def get_all_exchange_rates(
+    api_key: str = Depends(get_api_key),
+    handler: PaymentHandler = Depends(get_payment_handler)
+):
+    """
+    Get all available exchange rates.
+    
+    Returns:
+        Dictionary of all available exchange rates.
+    """
+    logger.info("Received request for all exchange rates")
+    try:
+        result = handler.get_exchange_rate()
+        return ExchangeRateResponse(rates=result)
+    except Exception as e:
+        logger.error(f"Error fetching exchange rates: {str(e)}")
+        logger.exception("Full error details:")
         raise HTTPException(status_code=500, detail=str(e))
 
 app.include_router(ln_router)
