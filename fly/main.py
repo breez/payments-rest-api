@@ -6,8 +6,13 @@ import os
 from dotenv import load_dotenv
 from enum import Enum
 from nodeless import PaymentHandler
+from shopify.router import router as shopify_router
+import logging
 
-# Load environment variables
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 load_dotenv()
 
 app = FastAPI(
@@ -20,9 +25,9 @@ API_KEY_NAME = "x-api-key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 API_KEY = os.getenv("API_SECRET")
 
-from fastapi import APIRouter
-
+# Load environment variables
 ln_router = APIRouter(prefix="/v1/lnurl", tags=["lnurl"])
+app.include_router(shopify_router)
 
 # --- Models ---
 class PaymentMethodEnum(str, Enum):
@@ -79,6 +84,14 @@ class SendOnchainResponse(BaseModel):
     status: str
     address: str
     fees_sat: Optional[int] = None
+
+class PaymentStatusResponse(BaseModel):
+    status: str
+    amount_sat: Optional[int] = None
+    fees_sat: Optional[int] = None
+    payment_time: Optional[int] = None
+    payment_hash: Optional[str] = None
+    error: Optional[str] = None
 
 # LNURL Models
 class ParseInputBody(BaseModel):
@@ -211,6 +224,43 @@ async def onchain_limits(
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+@app.get("/check_payment_status/{destination}", response_model=PaymentStatusResponse)
+async def check_payment_status(
+    destination: str,
+    api_key: str = Depends(get_api_key),
+    handler: PaymentHandler = Depends(get_payment_handler)
+):
+    """
+    Check the status of a payment by its destination/invoice.
+    
+    Args:
+        destination: The payment destination (invoice) to check
+    Returns:
+        Payment status information including status, amount, fees, and timestamps
+    """
+    logger.info(f"Received payment status check request for destination: {destination[:30]}...")
+    try:
+        logger.debug("Initializing PaymentHandler...")
+        logger.debug(f"Handler instance: {handler}")
+        logger.debug("Calling check_payment_status method...")
+        result = handler.check_payment_status(destination)
+        logger.info(f"Payment status check successful. Status: {result.get('status', 'unknown')}")
+        logger.debug(f"Full result: {result}")
+        return result
+    except ValueError as e:
+        logger.error(f"Validation error in check_payment_status: {str(e)}")
+        logger.exception("Validation error details:")
+        raise HTTPException(status_code=400, detail=str(e))
+    except AttributeError as e:
+        logger.error(f"Attribute error in check_payment_status: {str(e)}")
+        logger.error(f"Handler methods: {dir(handler)}")
+        logger.exception("Attribute error details:")
+        raise HTTPException(status_code=500, detail=f"Server configuration error: {str(e)}")
+    except Exception as e:
+        logger.error(f"Unexpected error in check_payment_status: {str(e)}")
+        logger.exception("Full error details:")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @ln_router.post("/parse_input")
 async def parse_input(

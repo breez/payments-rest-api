@@ -1,0 +1,4 @@
+fastapi
+breez-sdk-liquid
+python-dotenv
+
