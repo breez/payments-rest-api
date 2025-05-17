@@ -10,7 +10,7 @@ package-mode = false
 python = "^3.10"
 fastapi = "^0.111.0"
 uvicorn = {extras = ["standard"], version = "^0.30.1"}
-breez-sdk-liquid = "*"
+breez-sdk-liquid = "0.8.2"
 python-dotenv = "^1.0.1"
 requests = "^2.31.0"
 
