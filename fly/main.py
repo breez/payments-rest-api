@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Header, Query, APIRouter
 from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel, Field
@@ -8,6 +9,9 @@ from enum import Enum
 from nodeless import PaymentHandler
 from shopify.router import router as shopify_router
 import logging
+import threading
+import asyncio
+import time
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -15,10 +19,125 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
+_payment_handler = None
+_handler_lock = threading.Lock()
+_sync_task = None
+_last_sync_time = 0
+_consecutive_sync_failures = 0
+
+async def periodic_sync_check():
+    """Background task to periodically check SDK sync status and attempt resync if needed."""
+    global _last_sync_time, _consecutive_sync_failures, _payment_handler
+    
+    while True:
+        try:
+            current_time = time.time()
+            
+            if not _payment_handler:
+                logger.warning("Payment handler not initialized, waiting...")
+                await asyncio.sleep(5)
+                continue
+                
+            is_synced = _payment_handler.listener.is_synced()
+            sync_age = current_time - _last_sync_time if _last_sync_time > 0 else float('inf')
+            
+            # Log sync status with detailed metrics
+            logger.info(f"SDK sync status check - Synced: {is_synced}, Last sync age: {sync_age:.1f}s, Consecutive failures: {_consecutive_sync_failures}")
+            
+            if not is_synced or sync_age > 30:  # Force resync if not synced or sync is older than 30 seconds
+                logger.warning(f"SDK sync needed - Status: {'Not synced' if not is_synced else 'Sync too old'}")
+                
+                # Attempt resync with progressively longer timeouts based on consecutive failures
+                timeout = min(5 + (_consecutive_sync_failures * 2), 30)  # Increase timeout up to 30 seconds
+                if _payment_handler.wait_for_sync(timeout_seconds=timeout):
+                    logger.info("SDK resync successful")
+                    _last_sync_time = time.time()
+                    _consecutive_sync_failures = 0
+                else:
+                    logger.error(f"SDK resync failed after {timeout}s timeout")
+                    _consecutive_sync_failures += 1
+                    
+                    # If we have too many consecutive failures, try to reinitialize handler
+                    if _consecutive_sync_failures >= 5:
+                        logger.warning("Too many consecutive sync failures, attempting to reinitialize handler...")
+                        try:
+                            with _handler_lock:
+                                _payment_handler.disconnect()
+                                _payment_handler = PaymentHandler()
+                                _consecutive_sync_failures = 0
+                                logger.info("Payment handler reinitialized successfully")
+                        except Exception as e:
+                            logger.error(f"Failed to reinitialize payment handler: {e}")
+            else:
+                _last_sync_time = current_time
+                _consecutive_sync_failures = 0
+            
+            # Adjust sleep time based on sync status
+            sleep_time = 10 if not is_synced or _consecutive_sync_failures > 0 else 30
+            await asyncio.sleep(sleep_time)
+            
+        except Exception as e:
+            logger.error(f"Error in periodic sync check: {e}")
+            _consecutive_sync_failures += 1
+            await asyncio.sleep(5)  # Short sleep on error before retrying
+
+def get_payment_handler():
+    global _payment_handler
+    if _payment_handler is None:
+        with _handler_lock:
+            if _payment_handler is None:
+                try:
+                    _payment_handler = PaymentHandler()
+                except Exception as e:
+                    logger.error(f"Failed to initialize PaymentHandler: {str(e)}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Failed to initialize payment system"
+                    )
+    return _payment_handler
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager for FastAPI application.
+    Handles startup and shutdown events.
+    """
+    # Startup
+    global _payment_handler, _sync_task
+    try:
+        _payment_handler = PaymentHandler()
+        logger.info("Payment system initialized during startup")
+        
+        # Start background sync check task
+        _sync_task = asyncio.create_task(periodic_sync_check())
+        logger.info("Background sync check task started")
+    except Exception as e:
+        logger.error(f"Failed to initialize payment system during startup: {str(e)}")
+        # Don't raise here, let the handler initialize on first request if needed
+
+    yield  # Server is running
+
+    # Shutdown
+    if _sync_task:
+        _sync_task.cancel()
+        try:
+            await _sync_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("Background sync check task stopped")
+
+    if _payment_handler:
+        try:
+            _payment_handler.disconnect()
+            logger.info("Payment system disconnected during shutdown")
+        except Exception as e:
+            logger.error(f"Error during payment system shutdown: {str(e)}")
+
 app = FastAPI(
     title="Breez Nodeless Payments API",
     description="A FastAPI implementation of Breez SDK for Lightning/Liquid payments",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 API_KEY_NAME = "x-api-key"
@@ -132,12 +251,6 @@ async def get_api_key(api_key: str = Header(None, alias=API_KEY_NAME)):
         )
     return api_key
 
-def get_payment_handler():
-    try:
-        return PaymentHandler()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to initialize PaymentHandler: {str(e)}")
-
 # --- API Endpoints ---
 @app.get("/list_payments", response_model=PaymentListResponse)
 async def list_payments(
@@ -229,7 +342,10 @@ async def onchain_limits(
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    global _payment_handler
+    if _payment_handler and _payment_handler.listener.is_synced():
+        return {"status": "ok", "sdk_synced": True}
+    return {"status": "ok", "sdk_synced": False}
 
 @app.get("/check_payment_status/{destination}", response_model=PaymentStatusResponse)
 async def check_payment_status(

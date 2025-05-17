@@ -51,6 +51,7 @@ from breez_sdk_liquid import (
 import time
 import logging
 from pprint import pprint
+import threading
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -78,7 +79,6 @@ class SdkListener(EventListener):
 
         if isinstance(event, SdkEvent.SYNCED):
             self.synced = True
-            logger.info("SDK SYNCED")
         elif isinstance(event, SdkEvent.PAYMENT_SUCCEEDED):
             details = event.details
             # Determine identifier based on payment type
@@ -140,83 +140,91 @@ class SdkListener(EventListener):
 class PaymentHandler:
     """
     A wrapper class for the Breez SDK Nodeless (Liquid implementation).
-
-    This class handles SDK initialization, connection, and provides simplified
-    methods for common payment and wallet operations.
+    Implements singleton pattern to prevent multiple SDK instances.
     """
-    def __init__(self, network: LiquidNetwork = LiquidNetwork.MAINNET, working_dir: str = '~/.breez-cli', asset_metadata: Optional[List[AssetMetadata]] = None, external_input_parsers: Optional[List[ExternalInputParser]] = None):
+    _instance = None
+    _initialized = False
+    _lock = threading.Lock()
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self, network: LiquidNetwork = LiquidNetwork.MAINNET, working_dir: str = '~/.breez-cli', 
+                 asset_metadata: Optional[List[AssetMetadata]] = None, 
+                 external_input_parsers: Optional[List[ExternalInputParser]] = None):
         """
         Initializes the PaymentHandler and connects to the Breez SDK.
-
-        Args:
-            network: The Liquid network to use (MAINNET or TESTNET).
-            working_dir: The directory for SDK files.
-            asset_metadata: Optional list of AssetMetadata for non-Bitcoin assets.
-            external_input_parsers: Optional list of ExternalInputParser for custom input parsing.
+        Uses singleton pattern to prevent multiple initializations.
         """
-        logger.debug("Entering PaymentHandler.__init__")
-        load_dotenv() # Load environment variables from .env
+        if self._initialized:
+            return
 
-        self.breez_api_key = os.getenv('BREEZ_API_KEY')
-        self.seed_phrase = os.getenv('BREEZ_SEED_PHRASE')
+        with self._lock:
+            if self._initialized:
+                return
 
-        if not self.breez_api_key:
-            logger.error("BREEZ_API_KEY not found in environment variables.")
-            raise Exception("Missing Breez API key in .env file or environment")
-        if not self.seed_phrase:
-            logger.error("BREEZ_SEED_PHRASE not found in environment variables.")
-            raise Exception("Missing seed phrase in .env file or environment")
+            logger.debug("Initializing PaymentHandler")
+            load_dotenv()
 
-        logger.info("Retrieved credentials from environment successfully")
+            self.breez_api_key = os.getenv('BREEZ_API_KEY')
+            self.seed_phrase = os.getenv('BREEZ_SEED_PHRASE')
 
-        config = default_config(network, self.breez_api_key)
-        # Expand user path for working_dir
-        config.working_dir = os.path.expanduser(working_dir)
-        # Ensure working directory exists
-        try:
-            os.makedirs(config.working_dir, exist_ok=True)
-            logger.debug(f"Ensured working directory exists: {config.working_dir}")
-        except OSError as e:
-             logger.error(f"Failed to create working directory {config.working_dir}: {e}")
-             raise # Re-raise if directory creation fails
+            if not self.breez_api_key:
+                logger.error("BREEZ_API_KEY not found in environment variables.")
+                raise Exception("Missing Breez API key in .env file or environment")
+            if not self.seed_phrase:
+                logger.error("BREEZ_SEED_PHRASE not found in environment variables.")
+                raise Exception("Missing seed phrase in .env file or environment")
 
-        if asset_metadata:
-            config.asset_metadata = asset_metadata
-            logger.info(f"Configured asset metadata: {asset_metadata}")
+            logger.info("Retrieved credentials from environment successfully")
 
-        if external_input_parsers:
-            config.external_input_parsers = external_input_parsers
-            logger.info(f"Configured external input parsers: {external_input_parsers}")
+            config = default_config(network, self.breez_api_key)
+            config.working_dir = os.path.expanduser(working_dir)
+            
+            try:
+                os.makedirs(config.working_dir, exist_ok=True)
+            except OSError as e:
+                logger.error(f"Failed to create working directory {config.working_dir}: {e}")
+                raise
 
-        connect_request = ConnectRequest(config=config, mnemonic=self.seed_phrase)
+            if asset_metadata:
+                config.asset_metadata = asset_metadata
+            if external_input_parsers:
+                config.external_input_parsers = external_input_parsers
 
-        try:
-            self.instance = connect(connect_request)
-            self.listener = SdkListener()
-            # Add listener immediately after connecting
-            self.instance.add_event_listener(self.listener)
-            logger.info("Breez SDK connected successfully.")
-        except Exception as e:
-            logger.error(f"Failed to connect to Breez SDK: {e}")
-            # Re-raise the exception after logging
-            raise
+            connect_request = ConnectRequest(config=config, mnemonic=self.seed_phrase)
 
-        logger.debug("Exiting PaymentHandler.__init__")
+            try:
+                self.instance = connect(connect_request)
+                self.listener = SdkListener()
+                self.instance.add_event_listener(self.listener)
+                logger.info("Breez SDK connected successfully.")
+                
+                # Shorter sync timeout for initial connection
+                self.wait_for_sync(timeout_seconds=10)
+                
+            except Exception as e:
+                logger.error(f"Failed to connect to Breez SDK: {e}")
+                raise
 
+            self._initialized = True
+            logger.debug("PaymentHandler initialization complete")
 
-    def wait_for_sync(self, timeout_seconds: int = 30):
+    def wait_for_sync(self, timeout_seconds: int = 10) -> bool:
         """Wait for the SDK to sync before proceeding."""
-        logger.debug(f"Entering wait_for_sync (timeout={timeout_seconds}s)")
+        logger.debug(f"Waiting for sync (timeout={timeout_seconds}s)")
         start_time = time.time()
         while time.time() - start_time < timeout_seconds:
             if self.listener.is_synced():
-                logger.debug("SDK synced.")
-                logger.debug("Exiting wait_for_sync (synced)")
+                logger.debug("SDK synced successfully")
                 return True
-            time.sleep(0.5) # Shorter sleep for faster sync detection
-        logger.error("Sync timeout: SDK did not sync within the allocated time.")
-        logger.debug("Exiting wait_for_sync (timeout)")
-        raise Exception(f"Sync timeout: SDK did not sync within {timeout_seconds} seconds.")
+            time.sleep(0.1)  # Shorter sleep interval
+        logger.warning("SDK sync timeout")
+        return False
 
     def wait_for_payment(self, identifier: str, timeout_seconds: int = 60) -> bool:
         """
@@ -1368,96 +1376,57 @@ class PaymentHandler:
     def check_payment_status(self, destination: str) -> Dict[str, Any]:
         """
         Checks the status of a specific payment by its destination/invoice.
-
-        Args:
-            destination: The payment destination (invoice) string to check.
-        Returns:
-            Dictionary containing payment status information:
-            {
-                'status': str,  # The payment status (e.g., 'PENDING', 'SUCCEEDED', 'FAILED')
-                'amount_sat': int,  # Amount in satoshis
-                'fees_sat': int,  # Fees paid in satoshis
-                'payment_time': int,  # Unix timestamp of the payment
-                'payment_hash': str,  # Payment hash if available
-                'error': str,  # Error message if any
-            }
-        Raises:
-            ValueError: If destination is invalid.
-            Exception: For any SDK errors.
+        Uses optimized status checking with shorter timeouts.
         """
-        logger.debug(f"Entering check_payment_status for destination: {destination[:30]}...")
+        logger.debug(f"Checking payment status for {destination[:30]}...")
         try:
             if not isinstance(destination, str) or not destination:
-                logger.warning("Invalid or empty destination provided.")
-                raise ValueError("Destination must be a non-empty string.")
+                raise ValueError("Invalid destination")
 
-            # First check the payment status in our listener's cache
-            logger.debug("Checking payment status in listener cache...")
+            # Check cached status first
             cached_status = self.listener.get_payment_status(destination)
-            if cached_status:
-                logger.debug(f"Found cached payment status: {cached_status}")
-                # If we have a cached final status, we can return it immediately
-                if cached_status in ['SUCCEEDED', 'FAILED']:
-                    logger.info(f"Returning cached final status: {cached_status}")
-                    return {
-                        'status': cached_status,
-                        'amount_sat': None,  # These would be None for cached statuses
-                        'fees_sat': None,
-                        'payment_time': None,
-                        'payment_hash': None,
-                        'error': None
-                    }
-
-            # If no cached final status, check the actual payments
-            logger.debug("No cached final status found, querying payment list...")
-            try:
-                payments = self.instance.list_payments(ListPaymentsRequest())
-                logger.debug(f"Found {len(payments)} total payments")
-            except Exception as e:
-                logger.error(f"Error querying payment list: {e}")
-                raise
-            
-            # Find the most recent payment matching the destination
-            matching_payment = None
-            for payment in payments:
-                logger.debug(f"Checking payment: {getattr(payment, 'destination', 'No destination')} == {destination}")
-                if hasattr(payment, 'destination') and payment.destination == destination:
-                    if matching_payment is None or payment.timestamp > matching_payment.timestamp:
-                        matching_payment = payment
-                        logger.debug("Found matching payment or found more recent matching payment")
-
-            if matching_payment:
-                # Extract payment details
-                status = str(matching_payment.status)
-                details = matching_payment.details
-                
-                result = {
-                    'status': status,
-                    'amount_sat': matching_payment.amount_sat,
-                    'fees_sat': matching_payment.fees_sat,
-                    'payment_time': matching_payment.timestamp,
-                    'payment_hash': getattr(details, 'payment_hash', None),
-                    'error': getattr(matching_payment, 'error', None)
-                }
-                
-                logger.info(f"Found payment status for {destination[:30]}...: {status}")
-                logger.debug(f"Payment details: {result}")
-                logger.debug("Exiting check_payment_status")
-                return result
-            else:
-                logger.info(f"No payment found for destination: {destination[:30]}...")
+            if cached_status in ['SUCCEEDED', 'FAILED']:
                 return {
-                    'status': 'NOT_FOUND',
+                    'status': cached_status,
                     'amount_sat': None,
                     'fees_sat': None,
                     'payment_time': None,
                     'payment_hash': None,
-                    'error': 'Payment not found'
+                    'error': None
                 }
 
+            # Short wait for payment status
+            payment_succeeded = self.wait_for_payment(destination, timeout_seconds=2)
+            
+            # Get final status
+            final_status = self.listener.get_payment_status(destination) or 'PENDING'
+            status = 'SUCCEEDED' if payment_succeeded else final_status
+
+            # Try to get payment details
+            try:
+                payments = self.instance.list_payments(ListPaymentsRequest())
+                payment = next(
+                    (p for p in payments if hasattr(p, 'destination') and p.destination == destination),
+                    None
+                )
+            except Exception as e:
+                logger.warning(f"Could not fetch payment details: {e}")
+                payment = None
+
+            result = {
+                'status': status,
+                'amount_sat': getattr(payment, 'amount_sat', None),
+                'fees_sat': getattr(payment, 'fees_sat', None),
+                'payment_time': getattr(payment, 'timestamp', None),
+                'payment_hash': getattr(payment.details, 'payment_hash', None) if payment and payment.details else None,
+                'error': None if status == 'SUCCEEDED' else getattr(payment, 'error', 'Payment details not found')
+            }
+
+            logger.info(f"Payment status: {status}")
+            return result
+
         except Exception as e:
-            logger.error(f"Error checking payment status for {destination[:30]}...: {str(e)}")
-            logger.exception("Full error details:")
+            logger.error(f"Error checking payment status: {str(e)}")
             raise
 
     def get_exchange_rate(self, currency: str = None) -> Dict[str, Any]:
