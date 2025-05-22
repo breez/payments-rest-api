@@ -12,6 +12,11 @@ import logging
 import threading
 import asyncio
 import time
+import httpx
+import json
+import secrets
+import hmac
+import hashlib
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -24,6 +29,89 @@ _handler_lock = threading.Lock()
 _sync_task = None
 _last_sync_time = 0
 _consecutive_sync_failures = 0
+
+# Webhook configuration
+WEBHOOK_CONFIG = {
+    'url': os.getenv('WEBHOOK_URL'),  # WooCommerce site URL
+    'secret': os.getenv('WEBHOOK_SECRET'),  # Should match WooCommerce webhook secret
+}
+
+async def send_webhook_notification(invoice_id: str, status: str, payment_details: dict):
+    """
+    Send webhook notification to WooCommerce about payment status changes.
+    Only sends notifications for payments that were created through WooCommerce.
+    
+    Args:
+        invoice_id: The payment invoice/destination ID
+        status: The new payment status
+        payment_details: Additional payment details (amount, fees, etac)
+    """
+    if not WEBHOOK_CONFIG['url'] or not WEBHOOK_CONFIG['secret']:
+        logger.warning("Webhook configuration missing - notifications disabled")
+        return
+
+    try:
+        # Check if this payment was created through WooCommerce by checking payment details
+        if not payment_details.get('source') == 'woocommerce':
+            logger.debug(f"Skipping webhook for non-WooCommerce payment {invoice_id}")
+            return
+
+        webhook_url = f"{WEBHOOK_CONFIG['url'].rstrip('/')}/wp-json/breez-wc/v1/webhook"
+        
+        # Prepare webhook payload with only required fields
+        payload = {
+            'invoice_id': invoice_id,
+            'status': status
+        }
+
+        # Convert payload to JSON string with sorted keys to ensure consistent ordering
+        payload_string = json.dumps(payload, sort_keys=True, separators=(',', ':'))
+        
+        # Generate webhook signature components
+        timestamp = str(int(time.time()))
+        nonce = secrets.token_hex(16)
+        
+        # Create signature payload exactly as WooCommerce expects
+        signature_payload = f"{timestamp}{nonce}{payload_string}"
+        
+        # Calculate HMAC signature using webhook secret
+        signature = hmac.new(
+            WEBHOOK_CONFIG['secret'].encode('utf-8'),
+            signature_payload.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+
+        # Set headers exactly as WooCommerce expects
+        headers = {
+            'Content-Type': 'application/json',
+            'X-Breez-Signature': signature,
+            'X-Breez-Timestamp': timestamp,
+            'X-Breez-Nonce': nonce
+        }
+
+        logger.info(f"Sending webhook notification for invoice {invoice_id}: {status}")
+        logger.debug(f"Webhook payload: {payload_string}")
+        logger.debug(f"Signature components - Timestamp: {timestamp}, Nonce: {nonce}")
+        logger.debug(f"Signature payload: {signature_payload}")
+        logger.debug(f"Generated signature: {signature}")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                webhook_url,
+                content=payload_string,  # Send raw JSON string to match signature
+                headers=headers,
+                timeout=10.0
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"Webhook notification sent successfully for invoice {invoice_id}")
+                logger.debug(f"Webhook response: {response.text}")
+            else:
+                logger.error(f"Webhook notification failed for invoice {invoice_id}: {response.status_code}")
+                logger.error(f"Response: {response.text}")
+
+    except Exception as e:
+        logger.error(f"Error sending webhook notification: {str(e)}")
 
 async def periodic_sync_check():
     """Background task to periodically check SDK sync status and attempt resync if needed."""
@@ -53,6 +141,28 @@ async def periodic_sync_check():
                     logger.info("SDK resync successful")
                     _last_sync_time = time.time()
                     _consecutive_sync_failures = 0
+
+                    # After successful sync, check all pending payments
+                    try:
+                        pending_payments = _payment_handler.list_payments({"status": "PENDING"})
+                        for payment in pending_payments:
+                            payment_id = payment.get('destination')
+                            if not payment_id:
+                                continue
+                                
+                            # Check current status
+                            current_status = _payment_handler.check_payment_status(payment_id)
+                            status = current_status.get('status')
+                            
+                            # Send webhook for completed or failed payments
+                            if status in ['SUCCEEDED', 'FAILED']:
+                                await send_webhook_notification(
+                                    invoice_id=payment_id,
+                                    status=status,
+                                    payment_details=current_status
+                                )
+                    except Exception as e:
+                        logger.error(f"Error checking pending payments: {str(e)}")
                 else:
                     logger.error(f"SDK resync failed after {timeout}s timeout")
                     _consecutive_sync_failures += 1
@@ -159,6 +269,7 @@ class ReceivePaymentBody(BaseModel):
     method: PaymentMethodEnum = Field(PaymentMethodEnum.LIGHTNING, description="Payment method")
     description: Optional[str] = Field(None, description="Optional description for invoice")
     asset_id: Optional[str] = Field(None, description="Asset ID for Liquid asset (optional)")
+    source: Optional[str] = Field(None, description="Source of the payment request (e.g., 'woocommerce')")
 
 class SendPaymentBody(BaseModel):
     destination: str = Field(..., description="Payment destination (invoice or address)")
@@ -284,7 +395,8 @@ async def receive_payment(
             amount=request.amount,
             payment_method=request.method.value,
             description=request.description,
-            asset_id=request.asset_id
+            asset_id=request.asset_id,
+            source=request.source
         )
         return result
     except Exception as e:
@@ -375,6 +487,16 @@ async def check_payment_status(
         result = handler.check_payment_status(destination)
         logger.info(f"Payment status check successful. Status: {result.get('status', 'unknown')}")
         logger.debug(f"Full result: {result}")
+
+        # Send webhook notification for important status changes
+        status = result.get('status')
+        if status in ['SUCCEEDED', 'FAILED']:
+            await send_webhook_notification(
+                invoice_id=destination,
+                status=status,
+                payment_details=result
+            )
+
         return result
     except ValueError as e:
         logger.warning(f"Payment not found: {str(e)}")
