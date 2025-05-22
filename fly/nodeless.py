@@ -17,36 +17,31 @@ from breez_sdk_liquid import (
     default_config,
     PaymentMethod,
     ListPaymentsRequest,
-    InputType, # Added for parse functionality
-    SignMessageRequest, # Added for message signing
-    CheckMessageRequest, # Added for message checking
-    BuyBitcoinProvider, # Added for buy bitcoin
-    PrepareBuyBitcoinRequest, # Added for buy bitcoin
-    BuyBitcoinRequest, # Added for buy bitcoin
-    PreparePayOnchainRequest, # Added for pay onchain
-    PayOnchainRequest, # Added for pay onchain
-    RefundRequest, # Added for refunds
-    RefundableSwap, # Added for refunds
-    FetchPaymentProposedFeesRequest, # Added for fee acceptance
-    AcceptPaymentProposedFeesRequest, # Added for fee acceptance
-    PaymentState, # Added for fee acceptance
-    PaymentDetails, # Added for fee acceptance
-    AssetMetadata, # Added for assets
-    ExternalInputParser, # Added for parsers
-    GetPaymentRequest, # Added for get payment
-    ListPaymentDetails, # Added for list payments by details
-    ReceiveAmount, # Ensure ReceiveAmount is in this list!
-
-    # --- Imports for refined method signatures ---
+    InputType,
+    SignMessageRequest, 
+    CheckMessageRequest, 
+    BuyBitcoinProvider, 
+    PrepareBuyBitcoinRequest, 
+    BuyBitcoinRequest, 
+    PreparePayOnchainRequest,
+    PayOnchainRequest, 
+    RefundRequest, 
+    RefundableSwap, 
+    FetchPaymentProposedFeesRequest, 
+    AcceptPaymentProposedFeesRequest, 
+    PaymentState, 
+    PaymentDetails, 
+    AssetMetadata, 
+    ExternalInputParser,
+    GetPaymentRequest, 
+    ListPaymentDetails, 
+    ReceiveAmount, 
     PrepareBuyBitcoinResponse,
     PrepareLnUrlPayResponse,
     PreparePayOnchainResponse,
-    # Correct Imports for LNURL Data Objects
-    LnUrlPayRequestData, # Corrected import for prepare_lnurl_pay
-    LnUrlAuthRequestData, # Corrected import for lnurl_auth
-    LnUrlWithdrawRequestData, # Corrected import for lnurl_withdraw
-    # RefundableSwap already imported
-    # --- End imports ---
+    LnUrlPayRequestData,
+    LnUrlAuthRequestData, 
+    LnUrlWithdrawRequestData, 
 )
 import time
 import logging
@@ -63,67 +58,112 @@ class SdkListener(EventListener):
     A listener class for handling Breez SDK events.
 
     This class extends the EventListener from breez_sdk_liquid and implements
-    custom event handling logic, particularly for tracking successful payments
-    and other key SDK events.
+    custom event handling logic for tracking payment states through their lifecycle:
+
+    Lightning Payment States:
+    - PENDING: The swap service is holding the payment and has broadcast a lockup transaction
+    - WAITING_CONFIRMATION: Claim transaction broadcast or direct Liquid transaction seen
+    - SUCCEEDED: Claim transaction or direct Liquid transaction confirmed
+    - FAILED: Swap failed (expired or lockup transaction failed)
+    - WAITING_FEE_ACCEPTANCE: Payment requires fee acceptance
     """
     def __init__(self):
         self.synced = False
-        self.paid = []
-        self.refunded = [] # Added for tracking refunds
-        self.payment_statuses = {} # Track statuses for better payment checking
+        self.paid = []  # Legacy list for backward compatibility
+        self.refunded = []  # Track refunded payments
+        self.payment_statuses = {}  # Track all payment statuses
+        self.payment_errors = {}  # Track error messages for failed payments
+        self.payment_timestamps = {}  # Track when payments change state
+        self.payment_details = {}  # Cache payment details
+
+    def _update_payment_state(self, identifier: str, status: str, details: Any = None, error: str = None):
+        """Helper method to update payment state and related tracking."""
+        if not identifier:
+            logger.warning(f"Attempted to update payment state with empty identifier. Status: {status}")
+            return
+
+        # Update status and timestamp
+        self.payment_statuses[identifier] = status
+        self.payment_timestamps[identifier] = int(time.time())
+
+        # Cache payment details if provided
+        if details:
+            self.payment_details[identifier] = details
+
+        # Track errors for failed payments
+        if error:
+            self.payment_errors[identifier] = error
+        elif status != 'FAILED' and identifier in self.payment_errors:
+            del self.payment_errors[identifier]
+
+        # Update paid list for backward compatibility
+        if status in ['WAITING_CONFIRMATION', 'SUCCEEDED']:
+            if identifier not in self.paid:
+                self.paid.append(identifier)
+                logger.info(f"Payment {identifier} added to paid list (status: {status})")
+        
+        # Log state change
+        logger.info(f"Payment {identifier} state updated to {status}" + 
+                   (f" with error: {error}" if error else ""))
 
     def on_event(self, event):
         """Handles incoming SDK events."""
-        # Log all events at debug level
         logger.debug(f"Received SDK event: {event}")
 
         if isinstance(event, SdkEvent.SYNCED):
             self.synced = True
+            logger.info("SDK synced")
+            return
+
+        # Extract payment details and identifier
+        details = getattr(event, 'details', None)
+        if not details:
+            logger.debug("Event received without details")
+            return
+
+        # Determine payment identifier (try multiple possible fields)
+        identifier = None
+        if hasattr(details, 'payment_hash') and details.payment_hash:
+            identifier = details.payment_hash
+        elif hasattr(details, 'destination') and details.destination:
+            identifier = details.destination
+        elif hasattr(details, 'swap_id') and details.swap_id:
+            identifier = details.swap_id
+
+        if not identifier:
+            logger.warning("Could not determine payment identifier from event")
+            return
+
+        # Handle different payment events
+        if isinstance(event, SdkEvent.PAYMENT_PENDING):
+            self._update_payment_state(identifier, 'PENDING', details)
+            logger.info(f"Payment {identifier} is pending (lockup transaction broadcast)")
+
+        elif isinstance(event, SdkEvent.PAYMENT_WAITING_CONFIRMATION):
+            self._update_payment_state(identifier, 'WAITING_CONFIRMATION', details)
+            logger.info(f"Payment {identifier} is waiting confirmation (claim tx broadcast)")
+
         elif isinstance(event, SdkEvent.PAYMENT_SUCCEEDED):
-            details = event.details
-            # Determine identifier based on payment type
-            identifier = None
-            if hasattr(details, 'destination') and details.destination:
-                 identifier = details.destination
-            elif hasattr(details, 'payment_hash') and details.payment_hash:
-                 identifier = details.payment_hash
-
-            if identifier:
-                # Avoid duplicates if the same identifier can be seen multiple times
-                if identifier not in self.paid:
-                    self.paid.append(identifier)
-                self.payment_statuses[identifier] = 'SUCCEEDED'
-                logger.info(f"PAYMENT SUCCEEDED for identifier: {identifier}")
-            else:
-                logger.info("PAYMENT SUCCEEDED with no clear identifier.")
-
-            logger.debug(f"Payment Succeeded Details: {details}") # Log full details at debug
+            self._update_payment_state(identifier, 'SUCCEEDED', details)
+            logger.info(f"Payment {identifier} succeeded (claim tx confirmed)")
 
         elif isinstance(event, SdkEvent.PAYMENT_FAILED):
-            details = event.details
-            # Determine identifier based on payment type
-            identifier = None
-            if hasattr(details, 'destination') and details.destination:
-                 identifier = details.destination
-            elif hasattr(details, 'payment_hash') and details.payment_hash:
-                 identifier = details.payment_hash
-            elif hasattr(details, 'swap_id') and details.swap_id:
-                 identifier = details.swap_id # Add swap_id as potential identifier
-
             error = getattr(details, 'error', 'Unknown error')
+            self._update_payment_state(identifier, 'FAILED', details, error)
+            logger.error(f"Payment {identifier} failed. Error: {error}")
 
-            if identifier:
-                 self.payment_statuses[identifier] = 'FAILED'
-                 logger.error(f"PAYMENT FAILED for identifier: {identifier}, Error: {error}")
-            else:
-                 logger.error(f"PAYMENT FAILED with no clear identifier. Error: {error}")
-
-            logger.debug(f"Payment Failed Details: {details}") # Log full details at debug
+        elif isinstance(event, SdkEvent.PAYMENT_WAITING_FEE_ACCEPTANCE):
+            self._update_payment_state(identifier, 'WAITING_FEE_ACCEPTANCE', details)
+            logger.info(f"Payment {identifier} is waiting for fee acceptance")
 
     def is_paid(self, destination: str) -> bool:
-        """Checks if a payment to a specific destination has succeeded."""
-        # Check both the old list and the status dictionary
-        return destination in self.paid or self.payment_statuses.get(destination) == 'SUCCEEDED'
+        """
+        Checks if a payment to a specific destination has succeeded.
+        Now considers both WAITING_CONFIRMATION and SUCCEEDED as successful states.
+        """
+        status = self.payment_statuses.get(destination)
+        return (destination in self.paid or 
+                status in ['WAITING_CONFIRMATION', 'SUCCEEDED'])
 
     def is_synced(self) -> bool:
         """Checks if the SDK is synced."""
@@ -132,9 +172,45 @@ class SdkListener(EventListener):
     def get_payment_status(self, identifier: str) -> Optional[str]:
         """
         Get the known status for a payment identified by destination, hash, or swap ID.
-        Returns status string ('SUCCEEDED', 'FAILED', 'REFUNDED', 'PENDING', etc.) or None.
+        Returns status string ('SUCCEEDED', 'FAILED', 'PENDING', etc.) or None.
         """
         return self.payment_statuses.get(identifier)
+
+    def get_payment_error(self, identifier: str) -> Optional[str]:
+        """Get the error message for a failed payment, if any."""
+        return self.payment_errors.get(identifier)
+
+    def get_payment_timestamp(self, identifier: str) -> Optional[int]:
+        """Get the timestamp of the last state change for a payment."""
+        return self.payment_timestamps.get(identifier)
+
+    def get_payment_details(self, identifier: str) -> Optional[Any]:
+        """Get cached payment details if available."""
+        return self.payment_details.get(identifier)
+
+    def clear_old_data(self, max_age_seconds: int = 86400):
+        """
+        Clear payment data older than max_age_seconds (default 24 hours).
+        This helps prevent memory growth from old payment data.
+        """
+        current_time = int(time.time())
+        old_identifiers = [
+            identifier for identifier, timestamp in self.payment_timestamps.items()
+            if current_time - timestamp > max_age_seconds
+        ]
+
+        for identifier in old_identifiers:
+            self.payment_statuses.pop(identifier, None)
+            self.payment_errors.pop(identifier, None)
+            self.payment_timestamps.pop(identifier, None)
+            self.payment_details.pop(identifier, None)
+            if identifier in self.paid:
+                self.paid.remove(identifier)
+            if identifier in self.refunded:
+                self.refunded.remove(identifier)
+
+        if old_identifiers:
+            logger.info(f"Cleared {len(old_identifiers)} old payment records")
 
 
 class PaymentHandler:
@@ -235,9 +311,9 @@ class PaymentHandler:
         start_time = time.time()
         while time.time() - start_time < timeout_seconds:
             status = self.listener.get_payment_status(identifier)
-            if status == 'SUCCEEDED':
-                logger.debug(f"Payment for {identifier} succeeded.")
-                logger.debug("Exiting wait_for_payment (succeeded)")
+            if status in ['SUCCEEDED', 'PENDING']:
+                logger.debug(f"Payment for {identifier} has status: {status}")
+                logger.debug("Exiting wait_for_payment (succeeded or pending)")
                 return True
             if status == 'FAILED':
                  logger.error(f"Payment for {identifier} failed during wait.")
@@ -1373,57 +1449,122 @@ class PaymentHandler:
             return {k: self.sdk_to_dict(v) for k, v in obj.__dict__.items()}
         return str(obj)  # fallback
 
-    def check_payment_status(self, destination: str) -> Dict[str, Any]:
+    def check_payment_status(self, payment_identifier: str) -> Dict[str, Any]:
         """
-        Checks the status of a specific payment by its destination/invoice.
-        Uses optimized status checking with shorter timeouts.
-        """
-        logger.debug(f"Checking payment status for {destination[:30]}...")
-        try:
-            if not isinstance(destination, str) or not destination:
-                raise ValueError("Invalid destination")
+        Checks the status of a payment by its identifier (payment hash, destination, or swap ID).
+        For WooCommerce integration, we consider both WAITING_CONFIRMATION and SUCCEEDED as successful states
+        since WAITING_CONFIRMATION means the payment is irreversible (just waiting for onchain confirmation).
 
-            # Check cached status first
-            cached_status = self.listener.get_payment_status(destination)
-            if cached_status in ['SUCCEEDED', 'FAILED']:
+        The payment states follow the SDK states directly:
+        - PENDING: Swap service is holding payment, lockup transaction broadcast
+        - WAITING_CONFIRMATION: Claim transaction broadcast or direct Liquid transaction seen (considered successful)
+        - SUCCEEDED: Claim transaction or direct Liquid transaction confirmed
+        - FAILED: Swap failed (expired or lockup transaction failed)
+        - WAITING_FEE_ACCEPTANCE: Payment requires fee acceptance
+        - UNKNOWN: Payment not found or status cannot be determined
+
+        Args:
+            payment_identifier: Payment hash, destination, or swap ID string.
+
+        Returns:
+            Dictionary containing:
+            - status: Current payment state from SDK
+            - payment_details: Full payment details if available
+            - error: Error message if payment failed
+            - timestamp: When the payment was initiated/completed
+            - amount_sat: Payment amount in satoshis
+            - fees_sat: Payment fees in satoshis
+        """
+        logger.debug(f"Checking payment status for identifier: {payment_identifier}")
+        try:
+            if not isinstance(payment_identifier, str) or not payment_identifier:
+                raise ValueError("Invalid payment identifier")
+
+            # Always try to get fresh SDK status first for new payments
+            payment = None
+            try:
+                payment = self.instance.get_payment(GetPaymentRequest.PAYMENT_HASH(payment_identifier))
+                if payment:
+                    status = str(payment.status)
+                    # Update our internal tracking
+                    self.listener.payment_statuses[payment_identifier] = status
+                    # If payment is in a final state, add to paid list if successful
+                    if status in ['WAITING_CONFIRMATION', 'SUCCEEDED']:
+                        if payment_identifier not in self.listener.paid:
+                            self.listener.paid.append(payment_identifier)
+                            logger.info(f"Payment {payment_identifier} marked as paid (status: {status})")
+                    
+                    return {
+                        'status': status,
+                        'payment_details': self.sdk_to_dict(payment),
+                        'error': None if status not in ['FAILED'] else 'Payment failed',
+                        'timestamp': payment.timestamp,
+                        'amount_sat': payment.amount_sat,
+                        'fees_sat': payment.fees_sat
+                    }
+            except Exception as e:
+                logger.debug(f"Payment hash lookup failed: {str(e)}")
+
+            # Try swap ID lookup if payment hash lookup failed
+            try:
+                payment = self.instance.get_payment(GetPaymentRequest.SWAP_ID(payment_identifier))
+                if payment:
+                    status = str(payment.status)
+                    # Update our internal tracking
+                    self.listener.payment_statuses[payment_identifier] = status
+                    # If payment is in a final state, add to paid list if successful
+                    if status in ['WAITING_CONFIRMATION', 'SUCCEEDED']:
+                        if payment_identifier not in self.listener.paid:
+                            self.listener.paid.append(payment_identifier)
+                            logger.info(f"Payment {payment_identifier} marked as paid (status: {status})")
+                    
+                    return {
+                        'status': status,
+                        'payment_details': self.sdk_to_dict(payment),
+                        'error': None if status not in ['FAILED'] else 'Payment failed',
+                        'timestamp': payment.timestamp,
+                        'amount_sat': payment.amount_sat,
+                        'fees_sat': payment.fees_sat
+                    }
+            except Exception as e:
+                logger.debug(f"Swap ID lookup failed: {str(e)}")
+
+            # If we couldn't get fresh status, check our internal state
+            # This helps with payments we've seen before but might temporarily fail to fetch
+            if payment_identifier in self.listener.paid:
+                logger.debug(f"Found payment in internal paid list: {payment_identifier}")
                 return {
-                    'status': cached_status,
+                    'status': 'SUCCEEDED',  # We consider it succeeded if it was in paid list
+                    'payment_details': None,
+                    'error': None,
+                    'timestamp': None,
                     'amount_sat': None,
-                    'fees_sat': None,
-                    'payment_time': None,
-                    'payment_hash': None,
-                    'error': None
+                    'fees_sat': None
                 }
 
-            # Short wait for payment status
-            payment_succeeded = self.wait_for_payment(destination, timeout_seconds=2)
-            
-            # Get final status
-            final_status = self.listener.get_payment_status(destination) or 'PENDING'
-            status = 'SUCCEEDED' if payment_succeeded else final_status
+            # Check cached status as last resort
+            cached_status = self.listener.get_payment_status(payment_identifier)
+            if cached_status:
+                logger.debug(f"Using cached status: {cached_status}")
+                return {
+                    'status': cached_status,
+                    'payment_details': None,
+                    'error': None if cached_status not in ['FAILED'] else 'Payment failed',
+                    'timestamp': None,
+                    'amount_sat': None,
+                    'fees_sat': None
+                }
 
-            # Try to get payment details
-            try:
-                payments = self.instance.list_payments(ListPaymentsRequest())
-                payment = next(
-                    (p for p in payments if hasattr(p, 'destination') and p.destination == destination),
-                    None
-                )
-            except Exception as e:
-                logger.warning(f"Could not fetch payment details: {e}")
-                payment = None
-
-            result = {
-                'status': status,
-                'amount_sat': getattr(payment, 'amount_sat', None),
-                'fees_sat': getattr(payment, 'fees_sat', None),
-                'payment_time': getattr(payment, 'timestamp', None),
-                'payment_hash': getattr(payment.details, 'payment_hash', None) if payment and payment.details else None,
-                'error': None if status == 'SUCCEEDED' else getattr(payment, 'error', 'Payment details not found')
+            # If we get here, we couldn't find the payment
+            logger.debug(f"No payment found for identifier: {payment_identifier}")
+            return {
+                'status': 'UNKNOWN',
+                'payment_details': None,
+                'error': 'Payment not found',
+                'timestamp': None,
+                'amount_sat': None,
+                'fees_sat': None
             }
-
-            logger.info(f"Payment status: {status}")
-            return result
 
         except Exception as e:
             logger.error(f"Error checking payment status: {str(e)}")

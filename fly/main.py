@@ -175,11 +175,11 @@ class SendOnchainBody(BaseModel):
 
 class PaymentResponse(BaseModel):
     timestamp: int
-    amount_sat: int
-    fees_sat: int
-    payment_type: str
+    amount_sat: int = 0  # Default to 0 instead of requiring it
+    fees_sat: int = 0    # Default to 0 instead of requiring it
+    payment_type: str = "UNKNOWN"  # Default for NOT_FOUND cases
     status: str
-    details: Any
+    details: Dict[str, Any] = {}  # Default to empty dict instead of requiring it
     destination: Optional[str] = None
     tx_id: Optional[str] = None
     payment_hash: Optional[str] = None
@@ -206,11 +206,11 @@ class SendOnchainResponse(BaseModel):
 
 class PaymentStatusResponse(BaseModel):
     status: str
+    payment_details: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    timestamp: Optional[int] = None
     amount_sat: Optional[int] = None
     fees_sat: Optional[int] = None
-    payment_time: Optional[int] = None
-    payment_hash: Optional[str] = None
-    error: Optional[str] = None
 
 # LNURL Models
 class ParseInputBody(BaseModel):
@@ -354,31 +354,31 @@ async def check_payment_status(
     handler: PaymentHandler = Depends(get_payment_handler)
 ):
     """
-    Check the status of a payment by its destination/invoice.
+    Check the status of a payment by its identifier (payment hash, destination, or swap ID).
+    
+    The payment states follow the SDK states directly:
+    - PENDING: Swap service is holding payment, lockup transaction broadcast
+    - WAITING_CONFIRMATION: Claim transaction broadcast or direct Liquid transaction seen
+    - SUCCEEDED: Claim transaction or direct Liquid transaction confirmed
+    - FAILED: Swap failed (expired or lockup transaction failed)
+    - WAITING_FEE_ACCEPTANCE: Payment requires fee acceptance
     
     Args:
-        destination: The payment destination (invoice) to check
+        destination: The payment identifier (payment hash, destination, or swap ID)
     Returns:
-        Payment status information including status, amount, fees, and timestamps
+        Payment status information including status, payment details, amount, fees, and timestamps
+    Raises:
+        HTTPException: 404 if payment not found, 500 for other errors
     """
-    logger.info(f"Received payment status check request for destination: {destination[:30]}...")
+    logger.info(f"Received payment status check request for identifier: {destination[:30]}...")
     try:
-        logger.debug("Initializing PaymentHandler...")
-        logger.debug(f"Handler instance: {handler}")
-        logger.debug("Calling check_payment_status method...")
         result = handler.check_payment_status(destination)
         logger.info(f"Payment status check successful. Status: {result.get('status', 'unknown')}")
         logger.debug(f"Full result: {result}")
         return result
     except ValueError as e:
-        logger.error(f"Validation error in check_payment_status: {str(e)}")
-        logger.exception("Validation error details:")
-        raise HTTPException(status_code=400, detail=str(e))
-    except AttributeError as e:
-        logger.error(f"Attribute error in check_payment_status: {str(e)}")
-        logger.error(f"Handler methods: {dir(handler)}")
-        logger.exception("Attribute error details:")
-        raise HTTPException(status_code=500, detail=f"Server configuration error: {str(e)}")
+        logger.warning(f"Payment not found: {str(e)}")
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Unexpected error in check_payment_status: {str(e)}")
         logger.exception("Full error details:")
@@ -508,6 +508,74 @@ async def get_all_exchange_rates(
         return ExchangeRateResponse(rates=result)
     except Exception as e:
         logger.error(f"Error fetching exchange rates: {str(e)}")
+        logger.exception("Full error details:")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/payment/{payment_id}", response_model=PaymentResponse)
+async def get_payment_info(
+    payment_id: str,
+    api_key: str = Depends(get_api_key),
+    handler: PaymentHandler = Depends(get_payment_handler)
+):
+    """
+    Get detailed payment information for a specific BOLT11 invoice.
+    
+    Args:
+        payment_id: The BOLT11 invoice string
+    Returns:
+        Complete payment information if found, or a payment object with NOT_FOUND status
+    Raises:
+        HTTPException: 400 if invalid invoice, 500 for unexpected errors
+    """
+    logger.debug(f"Received payment info request for invoice: {payment_id[:30]}...")
+    try:
+        # Parse the input to verify it's a valid BOLT11 invoice
+        try:
+            parsed = handler.parse_input(payment_id)
+            if not parsed.get('type') == 'BOLT11':
+                logger.warning(f"Invalid payment ID format: {payment_id[:30]}...")
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid payment ID: Must be a BOLT11 invoice"
+                )
+        except Exception as e:
+            logger.warning(f"Failed to parse payment ID: {str(e)}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid BOLT11 invoice: {str(e)}"
+            )
+
+        # List all payments and find the matching one
+        payments = handler.list_payments({})
+        for payment in payments:
+            # Check both the destination and payment hash
+            if (payment.get('destination') == payment_id or 
+                payment.get('payment_hash') == parsed.get('invoice', {}).get('payment_hash')):
+                logger.debug(f"Found payment with status: {payment.get('status', 'unknown')}")
+                return payment
+
+        # If we get here, payment was not found - return a payment object with NOT_FOUND status
+        logger.debug(f"No payment found for invoice: {payment_id[:30]}...")
+        payment_hash = parsed.get('invoice', {}).get('payment_hash')
+        return {
+            'status': 'NOT_FOUND',
+            'payment_type': 'UNKNOWN',
+            'amount_sat': 0,
+            'fees_sat': 0,
+            'timestamp': int(time.time()),
+            'details': {},
+            'payment_hash': payment_hash,
+            'destination': payment_id,
+            'tx_id': None,
+            'swap_id': None
+        }
+
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        # Log unexpected errors
+        logger.error(f"Unexpected error retrieving payment info: {str(e)}")
         logger.exception("Full error details:")
         raise HTTPException(status_code=500, detail=str(e))
 
