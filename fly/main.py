@@ -7,7 +7,6 @@ import os
 from dotenv import load_dotenv
 from enum import Enum
 from nodeless import PaymentHandler
-from shopify.router import router as shopify_router
 import logging
 import threading
 import asyncio
@@ -32,30 +31,78 @@ _consecutive_sync_failures = 0
 
 # Webhook configuration
 WEBHOOK_CONFIG = {
-    'url': os.getenv('WEBHOOK_URL'),  # WooCommerce site URL
-    'secret': os.getenv('WEBHOOK_SECRET'),  # Should match WooCommerce webhook secret
+    'url': os.getenv('WEBHOOK_URL'),  # WooCommerce site URL - if set, webhooks will be sent for all payments
 }
+
+API_KEY = os.getenv("API_SECRET")
+
+# Track payments that have already had successful webhook notifications sent
+# Format: {invoice_id: {status: webhook_sent_timestamp}}
+_webhook_sent_cache = {}
+_webhook_cache_lock = threading.Lock()
+
+def has_webhook_been_sent(invoice_id: str, status: str) -> bool:
+    """
+    Check if a webhook has already been successfully sent for this payment and status.
+    
+    Args:
+        invoice_id: The payment invoice ID
+        status: The payment status
+    Returns:
+        True if webhook was already sent, False otherwise
+    """
+    with _webhook_cache_lock:
+        if invoice_id in _webhook_sent_cache:
+            return _webhook_sent_cache[invoice_id].get(status) is not None
+    return False
+
+def mark_webhook_sent(invoice_id: str, status: str):
+    """
+    Mark that a webhook has been successfully sent for this payment and status.
+    
+    Args:
+        invoice_id: The payment invoice ID
+        status: The payment status
+    """
+    with _webhook_cache_lock:
+        if invoice_id not in _webhook_sent_cache:
+            _webhook_sent_cache[invoice_id] = {}
+        _webhook_sent_cache[invoice_id][status] = time.time()
+        
+        # Keep cache size reasonable - remove entries older than 24 hours
+        current_time = time.time()
+        for payment_id, statuses in list(_webhook_sent_cache.items()):
+            for status_key, timestamp in list(statuses.items()):
+                if current_time - timestamp > 86400:  # 24 hours
+                    del statuses[status_key]
+            if not statuses:  # Remove payment entry if no statuses left
+                del _webhook_sent_cache[payment_id]
 
 async def send_webhook_notification(invoice_id: str, status: str, payment_details: dict):
     """
     Send webhook notification to WooCommerce about payment status changes.
-    Only sends notifications for payments that were created through WooCommerce.
+    Sends notifications for all payments if WEBHOOK_URL is configured.
+    Only sends once per payment/status combination.
     
     Args:
         invoice_id: The payment invoice/destination ID
         status: The new payment status
-        payment_details: Additional payment details (amount, fees, etac)
+        payment_details: Additional payment details (amount, fees, etc)
     """
-    if not WEBHOOK_CONFIG['url'] or not WEBHOOK_CONFIG['secret']:
-        logger.warning("Webhook configuration missing - notifications disabled")
+    if not WEBHOOK_CONFIG['url']:
+        logger.debug("Webhook URL not configured - notifications disabled")
+        return
+
+    if not API_KEY:
+        logger.warning("API_SECRET not configured - webhook authentication disabled")
+        return
+
+    # Check if webhook was already sent for this payment and status
+    if has_webhook_been_sent(invoice_id, status):
+        logger.debug(f"Webhook already sent for {invoice_id[:30]}... status {status}, skipping")
         return
 
     try:
-        # Check if this payment was created through WooCommerce by checking payment details
-        if not payment_details.get('source') == 'woocommerce':
-            logger.debug(f"Skipping webhook for non-WooCommerce payment {invoice_id}")
-            return
-
         webhook_url = f"{WEBHOOK_CONFIG['url'].rstrip('/')}/wp-json/breez-wc/v1/webhook"
         
         # Prepare webhook payload with only required fields
@@ -74,9 +121,9 @@ async def send_webhook_notification(invoice_id: str, status: str, payment_detail
         # Create signature payload exactly as WooCommerce expects
         signature_payload = f"{timestamp}{nonce}{payload_string}"
         
-        # Calculate HMAC signature using webhook secret
+        # Calculate HMAC signature using API secret
         signature = hmac.new(
-            WEBHOOK_CONFIG['secret'].encode('utf-8'),
+            API_KEY.encode('utf-8'),
             signature_payload.encode('utf-8'),
             hashlib.sha256
         ).hexdigest()
@@ -89,7 +136,7 @@ async def send_webhook_notification(invoice_id: str, status: str, payment_detail
             'X-Breez-Nonce': nonce
         }
 
-        logger.info(f"Sending webhook notification for invoice {invoice_id}: {status}")
+        logger.info(f"Sending webhook notification for invoice {invoice_id[:30]}...: {status}")
         logger.debug(f"Webhook payload: {payload_string}")
         logger.debug(f"Signature components - Timestamp: {timestamp}, Nonce: {nonce}")
         logger.debug(f"Signature payload: {signature_payload}")
@@ -104,14 +151,18 @@ async def send_webhook_notification(invoice_id: str, status: str, payment_detail
             )
             
             if response.status_code == 200:
-                logger.info(f"Webhook notification sent successfully for invoice {invoice_id}")
+                logger.info(f"Webhook notification sent successfully for invoice {invoice_id[:30]}...")
                 logger.debug(f"Webhook response: {response.text}")
+                
+                # Mark webhook as sent only on successful delivery
+                mark_webhook_sent(invoice_id, status)
             else:
-                logger.error(f"Webhook notification failed for invoice {invoice_id}: {response.status_code}")
+                logger.error(f"Webhook notification failed for invoice {invoice_id[:30]}...: {response.status_code}")
                 logger.error(f"Response: {response.text}")
 
     except Exception as e:
         logger.error(f"Error sending webhook notification: {str(e)}")
+        logger.exception("Full webhook error details:")
 
 async def periodic_sync_check():
     """Background task to periodically check SDK sync status and attempt resync if needed."""
@@ -145,6 +196,8 @@ async def periodic_sync_check():
                     # After successful sync, check all pending payments
                     try:
                         pending_payments = _payment_handler.list_payments({"status": "PENDING"})
+                        logger.info(f"Checking {len(pending_payments)} pending payments for status updates")
+                        
                         for payment in pending_payments:
                             payment_id = payment.get('destination')
                             if not payment_id:
@@ -154,8 +207,11 @@ async def periodic_sync_check():
                             current_status = _payment_handler.check_payment_status(payment_id)
                             status = current_status.get('status')
                             
+                            logger.debug(f"Payment {payment_id[:30]}... status: {status}")
+                            
                             # Send webhook for completed or failed payments
                             if status in ['SUCCEEDED', 'FAILED']:
+                                logger.info(f"Found completed payment {payment_id[:30]}... with status {status}, sending webhook")
                                 await send_webhook_notification(
                                     invoice_id=payment_id,
                                     status=status,
@@ -252,11 +308,9 @@ app = FastAPI(
 
 API_KEY_NAME = "x-api-key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
-API_KEY = os.getenv("API_SECRET")
 
 # Load environment variables
 ln_router = APIRouter(prefix="/v1/lnurl", tags=["lnurl"])
-app.include_router(shopify_router)
 
 # --- Models ---
 class PaymentMethodEnum(str, Enum):
@@ -295,6 +349,8 @@ class PaymentResponse(BaseModel):
     tx_id: Optional[str] = None
     payment_hash: Optional[str] = None
     swap_id: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+    source: Optional[str] = None
 
 class PaymentListResponse(BaseModel):
     payments: List[PaymentResponse]
@@ -302,6 +358,8 @@ class PaymentListResponse(BaseModel):
 class ReceiveResponse(BaseModel):
     destination: str
     fees_sat: int
+    metadata: Optional[Dict[str, Any]] = None
+    source: Optional[str] = None
 
 class SendResponse(BaseModel):
     status: str
@@ -391,14 +449,26 @@ async def receive_payment(
     handler: PaymentHandler = Depends(get_payment_handler)
 ):
     try:
+        # Call SDK method with original parameters
         result = handler.receive_payment(
             amount=request.amount,
             payment_method=request.method.value,
             description=request.description,
-            asset_id=request.asset_id,
-            source=request.source
+            asset_id=request.asset_id
         )
-        return result
+        
+        # Add metadata if source is provided
+        metadata = {}
+        if request.source:
+            metadata['source'] = request.source
+            
+        # Return response with metadata and source
+        return {
+            "destination": result["destination"],
+            "fees_sat": result["fees_sat"],
+            "metadata": metadata if metadata else None,
+            "source": request.source
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -458,6 +528,40 @@ async def health():
     if _payment_handler and _payment_handler.listener.is_synced():
         return {"status": "ok", "sdk_synced": True}
     return {"status": "ok", "sdk_synced": False}
+
+@app.get("/webhook_status")
+async def webhook_status(
+    api_key: str = Depends(get_api_key)
+):
+    """
+    Get webhook configuration and cache status for debugging.
+    
+    Returns:
+        Webhook configuration status and recent webhook cache entries
+    """
+    global _webhook_sent_cache
+    
+    with _webhook_cache_lock:
+        # Only show recent entries (last hour) for privacy
+        current_time = time.time()
+        recent_cache = {}
+        for payment_id, statuses in _webhook_sent_cache.items():
+            recent_statuses = {}
+            for status, timestamp in statuses.items():
+                if current_time - timestamp < 3600:  # Last hour
+                    recent_statuses[status] = {
+                        "timestamp": timestamp,
+                        "age_seconds": int(current_time - timestamp)
+                    }
+            if recent_statuses:
+                recent_cache[payment_id[:30] + "..."] = recent_statuses
+    
+    return {
+        "webhook_url_configured": bool(WEBHOOK_CONFIG['url']),
+        "api_secret_configured": bool(API_KEY),
+        "webhook_cache_size": len(_webhook_sent_cache),
+        "recent_webhooks_sent": recent_cache
+    }
 
 @app.get("/check_payment_status/{destination}", response_model=PaymentStatusResponse)
 async def check_payment_status(
