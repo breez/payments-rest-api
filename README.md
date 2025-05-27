@@ -1,10 +1,6 @@
-# Breez Nodeless SDK 
-Experimental deployments of Breez Nodeless SDK to various cloud platforms as REST API.
+# Breez Payments Rest Api
+Breez Payments Rest API is a REST API on top of [Breez Nodeless SDK](https://github.com/breez/breez-sdk-liquid) build with fastapi. It enables integrations like [breez-woocommerce](https://github.com/breez/breez-woocommerce). 
 
-Currently implemented endpoints:
-- /send_payment (bolt11)
-- /receive_payment (bolt11)
-- /list_payments
 
 ## Options
 - [fly.io](./fly/README.md) - deploy fly.io app 
