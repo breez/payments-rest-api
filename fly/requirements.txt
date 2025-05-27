@@ -1,4 +1,5 @@
 fastapi
 breez-sdk-liquid
 python-dotenv
-
+uvicorn
+requests

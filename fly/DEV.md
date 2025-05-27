@@ -28,10 +28,10 @@
 
 1. Build the Docker image:
    ```bash
-   docker build -t breez-nodeless .
+   docker build -t payments-rest-api .
    ```
 
 2. Run the container:
    ```bash
-   docker run -p 8000:8000 --env-file .env breez-nodeless
+   docker run -p 8000:8000 --env-file .env payments-rest-api
    ```

@@ -1,8 +1,8 @@
 [tool.poetry]
-name = "breez-fastapi"
+name = "payments-rest-api"
 version = "0.1.0"
 description = "A FastAPI implementation of Breez SDK for Lightning/Liquid payments"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Aljaz Ceru <aljaz@ceru.si>"]
 readme = "README.md"
 package-mode = false
 
