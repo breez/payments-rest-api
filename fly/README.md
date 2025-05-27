@@ -1,7 +1,5 @@
-# Breez Payments Rest Api
-
-A FastAPI implementation of the [Breez Nodeless SDK](https://github.com/breez/breez-sdk-liquid). This service provides a REST API for sending and receiving payments via the Lightning Network running on [fly.io](https://fly.io).
-
+## Deployment to fly.io
+This document explains deploying breez payments api to fly.io
 
 ## Prerequisites
 
