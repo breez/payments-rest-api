@@ -2,8 +2,8 @@
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/breez/nodeless-payments.git
-   cd nodeless-payments/fly
+   git clone https://github.com/breez/payments-rest-api.git
+   cd payments-rest-api/fly
    ```
 
 2. Install dependencies with Poetry:
