@@ -4,6 +4,9 @@ Breez Payments Rest API is a REST API on top of [Breez Nodeless SDK](https://git
 ## API documentation
 OpenAPI documentation is generated on every instance at ```<api-url>/docs```. It can also be downloaded [here](./openapi.json).
 
+## API Key Security
+
+X-API-KEY header serves as authorization method for accessing the API. Anyone that knows the API url and API_SECRET can access your funds, so make sure to protect this secret and to generate a unique and long string. You can use generators like [this](https://1password.com/password-generator) or this(https://www.uuidgenerator.net/).
 
 
 ## Deployment options
