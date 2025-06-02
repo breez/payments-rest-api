@@ -32,6 +32,7 @@ This document explains deploying breez payments api to fly.io
 
 3. Launch the app:
    ```bash
+   cd fly  # make sure you are in the fly directory before running fly launch so it picks up fly.toml 
    fly launch
    ```
 
