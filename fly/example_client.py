@@ -187,8 +187,8 @@ class BreezClient:
 # Example usage
 if __name__ == "__main__":
     # Configuration
-    API_URL = "http://localhost:8000"  # Change to your deployed API URL
-    API_KEY = "kurac"      # Set your API key here
+    API_URL = "<url-to-your-api>"  # Change to your deployed API URL
+    API_KEY = "<api-key-you-set>"      # Set your API key here
     
     # Initialize client
     breez = BreezClient(api_url=API_URL, api_key=API_KEY)
