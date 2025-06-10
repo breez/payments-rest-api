@@ -6,7 +6,7 @@ This document explains deploying breez payments api to fly.io
 - Python 3.10+ 
 - Poetry (package manager)
 - [Breez Nodeless SDK API key ](https://breez.technology/request-api-key/#contact-us-form-sdk)
-- 12 words BIP 39 seed ( use [Misty Breez](https://github.com/breez/misty-breez) to generate it)
+- 12 words BIP 39 seed (you can use [Misty Breez](https://github.com/breez/misty-breez) to generate it)
 
 ## Installation
 
