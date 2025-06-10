@@ -45,8 +45,8 @@ This document explains deploying breez payments api to fly.io
    
 6. Set secrets(see [here](https://github.com/breez/payments-rest-api/blob/main/README.md#api-key-security)):
    ```bash
-   fly secrets set BREEZ_API_KEY="your_breez_api_key" # make sure to use quotes specially if deploying from windows 
-   fly secrets set BREEZ_SEED_PHRASE=your_mnemonic_seed_phrase //e.g. "word1 word2 word3 ... word12"
+   fly secrets set BREEZ_API_KEY="your_breez_api_key" # make sure to use quotes specially if using Windows 
+   fly secrets set BREEZ_SEED_PHRASE="word1 word2 word3 ... word12"
    fly secrets set API_SECRET="your_api_secret"
 
    # if you're gonna be using this with woocommerce then you also need to set the webhook url 
