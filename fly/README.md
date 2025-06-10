@@ -21,8 +21,8 @@ This document explains deploying breez payments api to fly.io
    # Linux
    curl -L https://fly.io/install.sh | sh
 
-   # Windows
-   pwsh -Command "iwr https://fly.io/install.ps1 -useb | iex"
+   # Windows PowerShell
+   iwr https://fly.io/install.ps1 -useb | iex
    ```
 
 2. Log in to Fly:
