@@ -37,7 +37,7 @@ This document explains deploying breez payments api to fly.io
    fly launch
    ```
 
-5. Set secrets:
+5. Set secrets(see [here](https://github.com/breez/payments-rest-api/blob/main/README.md#api-key-security)):
    ```bash
    fly secrets set BREEZ_API_KEY=your_breez_api_key
    fly secrets set SEED_PHRASE=your_mnemonic_seed_phrase
