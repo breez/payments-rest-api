@@ -29,14 +29,15 @@ This document explains deploying breez payments api to fly.io
    ```bash
    fly auth login
    ```
-
-3. Launch the app:
+3. Clone this repo
+   
+4. Launch the app:
    ```bash
-   cd fly  # make sure you are in the fly directory before running fly launch so it picks up fly.toml 
+   cd <repo>/fly  # make sure you are in the fly directory before running fly launch so it picks up fly.toml 
    fly launch
    ```
 
-4. Set secrets:
+5. Set secrets:
    ```bash
    fly secrets set BREEZ_API_KEY=your_breez_api_key
    fly secrets set SEED_PHRASE=your_mnemonic_seed_phrase
