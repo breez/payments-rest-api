@@ -36,8 +36,14 @@ This document explains deploying breez payments api to fly.io
    cd <repo>/fly  # make sure you are in the fly directory before running fly launch so it picks up fly.toml 
    fly launch
    ```
-
-5. Set secrets(see [here](https://github.com/breez/payments-rest-api/blob/main/README.md#api-key-security)):
+   
+   Answer as follows:
+   ```
+   ? Would you like to copy its configuration to the new app? y
+   ? Do you want to tweak these settings before proceeding? N
+   ```
+   
+6. Set secrets(see [here](https://github.com/breez/payments-rest-api/blob/main/README.md#api-key-security)):
    ```bash
    fly secrets set BREEZ_API_KEY=your_breez_api_key
    fly secrets set SEED_PHRASE=your_mnemonic_seed_phrase
