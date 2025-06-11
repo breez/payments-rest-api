@@ -1,5 +1,13 @@
-## Deployment to fly.io
-This document explains deploying breez payments api to fly.io
+## Payment REST API with Optional Shopify Integration
+
+This document explains deploying the Breez Payments API to fly.io with optional Shopify integration.
+
+## Features
+
+- **Core Payment API**: Lightning Network and Liquid Bitcoin payments using Breez SDK
+- **Optional Shopify Integration**: Easy enable/disable Shopify payments support
+- **Feature Flag Based**: Modular architecture with environment-based configuration
+- **Shared Dependencies**: Efficient resource usage with shared payment handlers
 
 ## Prerequisites
 
@@ -48,9 +56,51 @@ This document explains deploying breez payments api to fly.io
    fly secrets set BREEZ_API_KEY=your_breez_api_key
    fly secrets set SEED_PHRASE=your_mnemonic_seed_phrase //e.g. "word1 word2 word3 ... word12"
    fly secrets set API_SECRET=your_api_secret
+   
+   # Optional: Enable Shopify integration
+   fly secrets set SHOPIFY_ENABLED=true
    ```
 
 5. Deploy the app:
    ```bash
    fly deploy
    ```
+
+## Shopify Integration
+
+The application includes optional Shopify integration that can be easily enabled or disabled.
+
+### Enable Shopify Integration
+
+Set the environment variable:
+```bash
+fly secrets set SHOPIFY_ENABLED=true
+```
+
+### Disable Shopify Integration
+
+Remove or set to false:
+```bash
+fly secrets set SHOPIFY_ENABLED=false
+# or
+fly secrets unset SHOPIFY_ENABLED
+```
+
+### Configuration
+
+When Shopify integration is enabled:
+- Additional endpoints are available at `/v1/shopify/*`
+- Shop configurations are stored in SQLite database
+- Individual shops must be configured via the API
+
+For detailed Shopify integration documentation, see [SHOPIFY_INTEGRATION.md](./SHOPIFY_INTEGRATION.md).
+
+## API Documentation
+
+With Shopify integration enabled, the API includes additional endpoints:
+
+- **Core API**: Standard payment processing endpoints
+- **Shopify API**: `/v1/shopify/*` endpoints for Shopify integration
+- **LNURL API**: `/v1/lnurl/*` endpoints for LNURL protocol support
+
+Visit `/docs` on your deployed app for interactive API documentation.

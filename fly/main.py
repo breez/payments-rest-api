@@ -16,6 +16,7 @@ import json
 import secrets
 import hmac
 import hashlib
+from config import config
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -31,10 +32,10 @@ _consecutive_sync_failures = 0
 
 # Webhook configuration
 WEBHOOK_CONFIG = {
-    'url': os.getenv('WEBHOOK_URL'),  # WooCommerce site URL - if set, webhooks will be sent for all payments
+    'url': config.WEBHOOK_URL,  # WooCommerce site URL - if set, webhooks will be sent for all payments
 }
 
-API_KEY = os.getenv("API_SECRET")
+API_KEY = config.API_SECRET
 
 # Track payments that have already had successful webhook notifications sent
 # Format: {invoice_id: {status: webhook_sent_timestamp}}
@@ -270,6 +271,23 @@ async def lifespan(app: FastAPI):
     """
     # Startup
     global _payment_handler, _sync_task
+    
+    # Validate configuration on startup
+    errors = config.validate_config()
+    if errors:
+        for error in errors:
+            logger.error(f"Configuration error: {error}")
+        raise RuntimeError(f"Configuration errors: {', '.join(errors)}")
+    
+    # Log configuration status
+    logger.info("=== Payment REST API Configuration ===")
+    logger.info(f"API Secret: {'Configured' if API_KEY else 'Missing'}")
+    logger.info(f"Webhook URL: {WEBHOOK_CONFIG['url'] or 'Not configured (optional)'}")
+    logger.info(f"Shopify Integration: {'Enabled' if config.is_shopify_enabled() else 'Disabled'}")
+    if config.is_shopify_enabled():
+        logger.info(f"Shopify DB Path: {config.get_shopify_db_path()}")
+    logger.info("=========================================")
+    
     try:
         _payment_handler = PaymentHandler()
         logger.info("Payment system initialized during startup")
@@ -306,7 +324,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-API_KEY_NAME = "x-api-key"
+API_KEY_NAME = config.API_KEY_NAME
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
 # Load environment variables
@@ -806,6 +824,18 @@ async def get_payment_info(
         raise HTTPException(status_code=500, detail=str(e))
 
 app.include_router(ln_router)
+
+# Conditionally include Shopify router if enabled
+if config.is_shopify_enabled():
+    try:
+        from shopify.router import router as shopify_router
+        app.include_router(shopify_router)
+        logger.info("Shopify integration enabled and router included")
+    except ImportError as e:
+        logger.error(f"Failed to import Shopify router: {e}")
+        logger.warning("Shopify is enabled but module could not be loaded")
+else:
+    logger.info("Shopify integration disabled")
 
 if __name__ == "__main__":
     import uvicorn
