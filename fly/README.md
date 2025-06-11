@@ -43,7 +43,7 @@ This document explains deploying breez payments api to fly.io
    ? Do you want to tweak these settings before proceeding? N
    ```
    
-6. Set secrets(see [here](https://github.com/breez/payments-rest-api/blob/main/README.md#api-key-security)):
+5. Set secrets(see [here](https://github.com/breez/payments-rest-api/blob/main/README.md#api-key-security)):
    ```bash
    fly secrets set BREEZ_API_KEY="your_breez_api_key" # make sure to use quotes specially if using Windows 
    fly secrets set BREEZ_SEED_PHRASE="word1 word2 word3 ... word12"
@@ -53,7 +53,13 @@ This document explains deploying breez payments api to fly.io
    fly secret set WEBHOOK_URL="link to your wordpress"
    ```
    
-5. Deploy the app:
+6. Deploy the app:
    ```bash
    fly deploy
    ```
+   
+7. Test the app:
+   ```bash
+   python example_client.py
+   ```
+
