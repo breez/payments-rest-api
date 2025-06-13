@@ -7,6 +7,7 @@ This document explains deploying breez payments api to fly.io
 - Poetry (package manager)
 - [Breez Nodeless SDK API key ](https://breez.technology/request-api-key/#contact-us-form-sdk)
 - 12 words BIP 39 seed (you can use [Misty Breez](https://github.com/breez/misty-breez) to generate it)
+- api key that you will use for accessing the API (see [API Key Security](../README.md#api-key-security)). You can use generators like [this](https://1password.com/password-generator) or [this](https://www.uuidgenerator.net/).
 
 ## Installation
 
@@ -30,10 +31,12 @@ This document explains deploying breez payments api to fly.io
    fly auth login
    ```
 3. Clone this repo
-   
+   ```bash
+   git clone https://github.com/breez/payments-rest-api.git
+   cd payments-rest-api  
+   ```
 4. Launch the app:
    ```bash
-   cd <repo>/fly  # make sure you are in the fly directory before running fly launch so it picks up fly.toml 
    fly launch
    ```
    
