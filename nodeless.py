@@ -212,6 +212,26 @@ class SdkListener(EventListener):
         if old_identifiers:
             logger.info(f"Cleared {len(old_identifiers)} old payment records")
 
+    def cleanup(self):
+        """
+        Complete cleanup of all listener data and reset state.
+        Should be called when disconnecting from the SDK.
+        """
+        logger.debug("Cleaning up SdkListener resources")
+        
+        # Clear all tracking data
+        self.payment_statuses.clear()
+        self.payment_errors.clear()
+        self.payment_timestamps.clear()
+        self.payment_details.clear()
+        self.paid.clear()
+        self.refunded.clear()
+        
+        # Reset sync state
+        self.synced = False
+        
+        logger.info("SdkListener cleanup completed")
+
 
 class PaymentHandler:
     """
@@ -331,19 +351,52 @@ class PaymentHandler:
         return False
 
     def disconnect(self):
-        """Disconnects from the Breez SDK."""
+        """Disconnects from the Breez SDK and cleans up all resources."""
         logger.debug("Entering disconnect")
         try:
-            # Check if the instance attribute exists and is not None
+            # Clean up event listener first
+            if hasattr(self, 'listener') and self.listener:
+                logger.debug("Cleaning up event listener")
+                # While SDK might not have explicit remove_event_listener,
+                # we can at least clean up our listener's internal state
+                self.listener.cleanup()
+                
+            # Disconnect from SDK instance
             if hasattr(self, 'instance') and self.instance:
+                logger.debug("Disconnecting from Breez SDK instance")
                 self.instance.disconnect()
                 logger.info("Breez SDK disconnected.")
+                
+                # Clear the instance reference to prevent accidental reuse
+                self.instance = None
             else:
                 logger.warning("Disconnect called but SDK instance was not initialized or already disconnected.")
+                
+            # Clear listener reference
+            if hasattr(self, 'listener'):
+                self.listener = None
+                
+            # Reset initialization flag to allow re-initialization if needed
+            with self._lock:
+                self._initialized = False
+                
+            logger.info("PaymentHandler cleanup completed successfully")
+            
         except Exception as e:
-            logger.error(f"Error disconnecting from Breez SDK: {e}")
-            # Decide if you want to re-raise or just log depending on context
-            # raise # Re-raising might prevent clean shutdown
+            logger.error(f"Error during PaymentHandler cleanup: {e}")
+            logger.exception("Full cleanup error details:")
+            # Continue with cleanup even if there are errors to ensure partial cleanup
+            
+            # Ensure critical references are cleared even on error
+            try:
+                if hasattr(self, 'instance'):
+                    self.instance = None
+                if hasattr(self, 'listener'):
+                    self.listener = None
+                with self._lock:
+                    self._initialized = False
+            except Exception as cleanup_error:
+                logger.error(f"Error during emergency cleanup: {cleanup_error}")
 
         logger.debug("Exiting disconnect")
 
