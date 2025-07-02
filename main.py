@@ -268,8 +268,10 @@ async def lifespan(app: FastAPI):
     Lifespan context manager for FastAPI application.
     Handles startup and shutdown events.
     """
+    # Declare all global variables at the top of the function
+    global _payment_handler, _sync_task, _webhook_sent_cache
+    
     # Startup
-    global _payment_handler, _sync_task
     try:
         _payment_handler = PaymentHandler()
         logger.info("Payment system initialized during startup")
@@ -283,8 +285,12 @@ async def lifespan(app: FastAPI):
 
     yield  # Server is running
 
-    # Shutdown
+    # Shutdown - Clean up resources in proper order
+    logger.info("Starting application shutdown sequence")
+    
+    # First, stop background tasks
     if _sync_task:
+        logger.debug("Cancelling background sync task")
         _sync_task.cancel()
         try:
             await _sync_task
@@ -292,12 +298,23 @@ async def lifespan(app: FastAPI):
             pass
         logger.info("Background sync check task stopped")
 
+    # Then disconnect payment handler and clean up all resources
     if _payment_handler:
         try:
+            logger.debug("Initiating payment handler cleanup")
             _payment_handler.disconnect()
             logger.info("Payment system disconnected during shutdown")
         except Exception as e:
             logger.error(f"Error during payment system shutdown: {str(e)}")
+    
+    # Clear global references
+    _payment_handler = None
+    
+    # Clear webhook cache
+    with _webhook_cache_lock:
+        _webhook_sent_cache.clear()
+    
+    logger.info("Application shutdown sequence completed")
 
 app = FastAPI(
     title="Breez Nodeless Payments API",
@@ -412,7 +429,17 @@ class ExchangeRateResponse(BaseModel):
 async def get_api_key(api_key: str = Header(None, alias=API_KEY_NAME)):
     if not API_KEY:
         raise HTTPException(status_code=500, detail="API key not configured on server")
-    if api_key != API_KEY:
+    
+    # Handle None/missing API key
+    if api_key is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid API Key",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
+    
+    # Use secrets.compare_digest to prevent timing attacks
+    if not secrets.compare_digest(api_key.encode('utf-8'), API_KEY.encode('utf-8')):
         raise HTTPException(
             status_code=401,
             detail="Invalid API Key",
