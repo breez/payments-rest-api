@@ -21,7 +21,7 @@ You can select your preferred region for deployment:
 Select **Instance type**, use `Free` for free deployment that should be enough for small usage:
 ![render3.jpg](./images/render3.jpg)
 
-Configure the **Environment** with the :
+Configure the **Environment** with the (make sure the key names are correct and uppercase) :
 ![render4.jpg](./images/render4.jpg)
 
 
